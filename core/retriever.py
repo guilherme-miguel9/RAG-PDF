@@ -45,10 +45,11 @@ def retrieve(query: str, top_k_retrieval: int = settings.TOP_K_RETRIEVAL, top_k_
         })
         
     # Filtro de relevância semântica mínima
-    candidates = [c for c in candidates if c["similarity"] >= settings.SIMILARITY_THRESHOLD]
+    threshold = getattr(settings, "SIMILARITY_THRESHOLD", 0.15)
+    candidates = [c for c in candidates if c["similarity"] >= threshold]
     
     if not candidates:
-        print(f"[LangChain Retriever] Documentos abaixo do limiar de similaridade ({settings.SIMILARITY_THRESHOLD}).")
+        print(f"[LangChain Retriever] Documentos abaixo do limiar de similaridade ({threshold}).")
         return []
         
     # 2. Estágio 2: Reranking com Cross-Encoder

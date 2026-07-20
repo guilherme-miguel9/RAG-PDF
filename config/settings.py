@@ -37,6 +37,7 @@ CHUNK_OVERLAP = 120
 
 TOP_K_RETRIEVAL = 12
 TOP_K_RERANK = 4
+SIMILARITY_THRESHOLD = 0.15
 
 # =========================================================
 # CONFIGURAÇÕES DO SERVIDOR LLM LOCAL (LM STUDIO)
