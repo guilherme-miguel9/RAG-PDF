@@ -1,4 +1,12 @@
 import os
+
+# Define variáveis de ambiente para evitar conflitos de threads (OpenMP/MKL/ONNX) em workers do Streamlit no Windows
+os.environ["OMP_NUM_THREADS"] = "1"
+os.environ["MKL_NUM_THREADS"] = "1"
+os.environ["OPENBLAS_NUM_THREADS"] = "1"
+os.environ["VECLIB_MAXIMUM_THREADS"] = "1"
+os.environ["NUMEXPR_NUM_THREADS"] = "1"
+
 import re
 import hashlib
 from config import settings
