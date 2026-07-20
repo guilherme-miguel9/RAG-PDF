@@ -1,0 +1,61 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Ambientes virtuais e dependências locais
+venv/
+.venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+
+# Banco vetorial e embeddings
+memoria_atualizada/
+chroma_db/
+pdf_chat/chroma_db/
+pdf_chat/memoria_atualizada/
+*.db
+*.sqlite3
+
+# Arquivos confidenciais, documentos e planilhas (NUNCA SUBIR PARA O GITHUB)
+*.pdf
+*.PDF
+*.xls
+*.xlsx
+*.xlsm
+*.csv
+*.doc
+*.docx
+*.ppt
+*.pptx
+*.txt
+*.rtf
+
+# Exceções permitidas no repositório (apenas configuração do projeto)
+!requirements.txt
+!README.md
+
+# Arquivos compactados, temporários e logs
+*.log
+*.tmp
+*.bak
+*.rar
+*.zip
+*.7z
+*.tar.gz
+
+# VSCode e IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Variáveis de ambiente e segredos
+.env
+.env.*
+*.key
+*.pem
