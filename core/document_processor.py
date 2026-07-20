@@ -210,16 +210,18 @@ def _add_raw_chunk(text: str, page_num: int, chunks: list, metadatas: list, ids:
 # 3. ROTINA PRINCIPAL DE INDEXAÇÃO LANGCHAIN
 # =========================================================
 
-def index_pdf(pdf_path: str, force_reindex: bool = False) -> int:
+def index_pdf(pdf_path: str, force_reindex: bool = False, use_docling: bool = False) -> int:
     """
     Orquestra a extração do PDF, fragmentação em objetos Document e gravação no Chroma LangChain.
+    Se use_docling=True (recomendado para CLI offline), extrai tabelas e layout via Docling.
+    Se use_docling=False (recomendado para Streamlit/UI rápida), utiliza PyMuPDF (fitz).
     """
     if force_reindex:
         vector_store.delete_collection()
 
     db = vector_store.get_vector_db()
     
-    pages = extract_pages(pdf_path, use_docling=True)
+    pages = extract_pages(pdf_path, use_docling=use_docling)
     if not pages:
         print("[LangChain Processor] Nenhum texto foi identificado no PDF.")
         return 0

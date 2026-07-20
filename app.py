@@ -322,8 +322,8 @@ col_doc1, col_doc2 = st.columns([1.3, 1], gap="large")
 with col_doc1:
     st.markdown("""
     <div class="apple-card">
-        <div class="apple-card-title">Carga e Indexação de Documentos</div>
-        <div class="apple-card-desc">Envie um novo arquivo PDF do Procedimento Operacional Padrão ou utilize o documento local residente no servidor. O motor Docling estruturará tabelas e parágrafos antes da conversão em objetos LangChain.</div>
+        <div class="apple-card-title">Carga e Indexação Rápida (Web UI)</div>
+        <div class="apple-card-desc">O sistema já opera conectado ao banco vetorial do POP residente (pré-indexado com Docling offline). Se desejar indexar um novo arquivo ou reindexar o documento local pela interface web, o motor utilizará PyMuPDF para máxima velocidade.</div>
     </div>
     """, unsafe_allow_html=True)
     
@@ -339,8 +339,8 @@ with col_doc1:
                         tmp_file.write(uploaded_file.getvalue())
                         tmp_path = tmp_file.name
                         
-                    st.write("Executando conversão estruturada via Docling e fragmentação semântica...")
-                    count = document_processor.index_pdf(tmp_path, force_reindex=False)
+                    st.write("Executando extração ultrarrápida (fitz) e fragmentação semântica...")
+                    count = document_processor.index_pdf(tmp_path, force_reindex=False, use_docling=False)
                     os.unlink(tmp_path)
                     
                     status.update(label=f"Indexação concluída com sucesso. Total de fragmentos: {count}", state="complete", expanded=False)
@@ -352,23 +352,23 @@ with col_doc1:
         default_pdf = settings.DEFAULT_PDF_PATH
         if os.path.exists(default_pdf):
             if st.button("Indexar Documento Local (pop_leitura.pdf)", use_container_width=True):
-                with st.status("Carregando e indexando documento padrão via LangChain...", expanded=True) as status:
-                    st.write("Analisando estrutura documental do PDF residente...")
-                    count = document_processor.index_pdf(default_pdf, force_reindex=False)
+                with st.status("Carregando e indexando documento residente...", expanded=True) as status:
+                    st.write("Extraindo e fragmentando texto do PDF residente...")
+                    count = document_processor.index_pdf(default_pdf, force_reindex=False, use_docling=False)
                     status.update(label=f"Documento local indexado com sucesso. Fragmentos na coleção: {count}", state="complete", expanded=False)
                 st.rerun()
 
 with col_doc2:
     st.markdown("""
     <div class="apple-card" style="height: 100%;">
-        <div class="apple-card-title">Arquitetura LangChain LCEL</div>
+        <div class="apple-card-title">Arquitetura Híbrida LangChain</div>
         <div class="apple-card-desc" style="margin-top:0.8rem;">
-            O fluxo de processamento opera de maneira encadeada:
+            O fluxo de processamento opera com dupla estratégia:
             <ul style="margin-top:0.6rem; padding-left:1.2rem; line-height:1.6; color:#A1A1A6;">
-                <li><b style="color:#FFFFFF;">Ingestão:</b> Conversão de layout Markdown via Docling para objetos <code>Document</code> oficiais do LangChain.</li>
-                <li><b style="color:#FFFFFF;">Armazenamento:</b> Vetorização local de alta densidade no Chroma via <code>HuggingFaceEmbeddings</code>.</li>
-                <li><b style="color:#FFFFFF;">Retriever Duplo:</b> Busca inicial por cosseno e reordenação de precisão via <code>CrossEncoder</code>.</li>
-                <li><b style="color:#FFFFFF;">Cadeia LCEL:</b> Formatação e geração limpa via <code>ChatPromptTemplate</code> conectado ao LM Studio.</li>
+                <li><b style="color:#FFFFFF;">Base Residente (Docling CLI):</b> Pré-indexação profunda com extração de tabelas e layout complexo via terminal via <code>scripts/cli_indexer.py</code>.</li>
+                <li><b style="color:#FFFFFF;">Web Indexing Rápido:</b> Ingestão ágil via PyMuPDF na interface web para não gerar travamentos na thread.</li>
+                <li><b style="color:#FFFFFF;">Retriever Duplo:</b> Busca inicial cosseno no Chroma e reordenação com <code>CrossEncoder</code>.</li>
+                <li><b style="color:#FFFFFF;">Bot Operacional:</b> Cadeia LCEL conectada ao LM Studio local respondendo exclusivamente com evidências.</li>
             </ul>
         </div>
     </div>
