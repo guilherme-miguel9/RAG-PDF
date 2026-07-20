@@ -13,13 +13,14 @@ ENV/
 env.bak/
 venv.bak/
 
-# Banco vetorial e embeddings
+# Banco vetorial, índices e dados locais
+data/
 memoria_atualizada/
 chroma_db/
-pdf_chat/chroma_db/
-pdf_chat/memoria_atualizada/
+data/chroma_db/
+data/raw/
 *.db
-*.sqlite3
+*.sqlite
 
 # Arquivos confidenciais, documentos e planilhas (NUNCA SUBIR PARA O GITHUB)
 *.pdf

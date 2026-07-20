@@ -1,25 +1,24 @@
 import re
 from sentence_transformers import CrossEncoder
-import config
-from rag_indexer import get_collection, get_embedding_model
+from config import settings
+from core import vector_store
 
-# Cache em memória do modelo Cross-Encoder (Reranker)
-_reranker_cache = None
+# Cache em memória para o modelo Cross-Encoder (Reranker)
+_reranker_model_cache = None
 
 
 def get_reranker_model():
-    """Carrega o modelo de Reranking Cross-Encoder (com cache em memória)."""
-    global _reranker_cache
-    if _reranker_cache is None:
-        print(f"🎯 Carregando modelo Cross-Encoder de Reranking: {config.RERANKER_MODEL}...")
-        _reranker_cache = CrossEncoder(config.RERANKER_MODEL)
-    return _reranker_cache
+    """Carrega ou retorna a instância em cache do modelo de Reranking Cross-Encoder."""
+    global _reranker_model_cache
+    if _reranker_model_cache is None:
+        print(f"🎯 [Retriever] Carregando modelo Cross-Encoder: {settings.RERANKER_MODEL}...")
+        _reranker_model_cache = CrossEncoder(settings.RERANKER_MODEL)
+    return _reranker_model_cache
 
 
 def expand_query(query: str) -> str:
     """
-    Expande e enriquece a query para aumentar o recall no Estágio 1 (Busca Vetorial).
-    Adiciona termos de contexto baseados na intenção detectada na pergunta.
+    Expande a query do usuário adicionando termos correlatos para maximizar o recall no Estágio 1.
     """
     expansions = {
         r"list[ae]|liste|quais (são os|os|as)|enumere": "lista itens enumeração requisitos",
@@ -40,24 +39,24 @@ def expand_query(query: str) -> str:
 
 def retrieve(
     query: str,
-    n_retrieval: int = config.TOP_K_RETRIEVAL,
-    n_rerank: int = config.TOP_K_RERANK,
+    n_retrieval: int = settings.TOP_K_RETRIEVAL,
+    n_rerank: int = settings.TOP_K_RERANK,
     use_reranker: bool = True
 ) -> list[dict]:
     """
-    Executa busca em dois estágios:
-    1. Busca Vetorial ampla (Estágio 1 - Bi-Encoder) com query expandida.
-    2. Reranking de alta precisão (Estágio 2 - Cross-Encoder) usando a query original do usuário.
+    Executa a recuperação em 2 estágios:
+    1. Busca vetorial rápida por similaridade de cosseno (ChromaDB + Bi-Encoder).
+    2. Refinamento e reordenação de precisão (Cross-Encoder Reranker).
     """
-    collection = get_collection()
-    embed_model = get_embedding_model()
+    collection = vector_store.get_collection()
+    embed_model = vector_store.get_embedding_model()
     
-    # 1. Expansão de Query
+    # 1. Expansão de Query para Estágio 1
     expanded_query = expand_query(query)
     
-    # 2. Prepara texto da query para o modelo Bi-Encoder
+    # 2. Embedding da consulta
     query_text_for_embedding = expanded_query
-    if "e5" in config.EMBEDDING_MODEL.lower():
+    if "e5" in settings.EMBEDDING_MODEL.lower():
         query_text_for_embedding = f"query: {expanded_query}"
         
     query_vector = embed_model.encode([query_text_for_embedding], normalize_embeddings=True)[0]
@@ -70,7 +69,7 @@ def retrieve(
             include=["documents", "metadatas", "distances"]
         )
     except Exception as e:
-        print(f"❌ Erro na busca vetorial no ChromaDB: {e}")
+        print(f"❌ [Retriever] Erro ao consultar o banco vetorial: {e}")
         return []
         
     docs = results.get("documents", [[]])[0]
@@ -89,12 +88,11 @@ def retrieve(
             "vector_distance": round(dist, 4)
         })
         
-    # Se reranker não for solicitado ou não houver candidatos suficientes
     if not use_reranker or len(candidates) <= 1:
         return candidates[:n_rerank]
         
     # 4. Reranking com Cross-Encoder (Estágio 2)
-    # Sempre usamos a query ORIGINAL (query limpa do usuário) para pontuar a exatidão
+    # A comparação do Cross-Encoder é sempre feita usando a pergunta original (limpa) do usuário
     reranker = get_reranker_model()
     pairs = [(query, c["text"]) for c in candidates]
     
@@ -103,20 +101,9 @@ def retrieve(
         for i, score in enumerate(scores):
             candidates[i]["rerank_score"] = float(round(score, 4))
             
-        # Ordena do maior score (mais relevante) para o menor
         candidates.sort(key=lambda x: x["rerank_score"], reverse=True)
     except Exception as e:
-        print(f"⚠️ Aviso ao executar Reranker ({e}). Usando ordenação do ChromaDB.")
+        print(f"⚠️ [Retriever] Aviso no Reranker ({e}). Usando ordenação original do Bi-Encoder.")
         candidates.sort(key=lambda x: x["vector_distance"])
         
     return candidates[:n_rerank]
-
-
-if __name__ == "__main__":
-    # Teste rápido no terminal
-    pergunta_teste = "Quais são os procedimentos de leitura e notas do POP?"
-    print(f"\n🔍 Testando busca para: '{pergunta_teste}'...")
-    trechos = retrieve(pergunta_teste, n_retrieval=8, n_rerank=3)
-    for idx, t in enumerate(trechos, 1):
-        print(f"\n[{idx}] Página: {t['page_num']} | Score: {t.get('rerank_score', 'N/A')}")
-        print(f"Trecho: {t['text'][:200]}...")

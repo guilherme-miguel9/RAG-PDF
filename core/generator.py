@@ -1,15 +1,15 @@
 from openai import OpenAI
-import config
+from config import settings
 
-# Inicializa o cliente OpenAI apontando para o LM Studio local
+# Inicializa o cliente apontando para a base URL do LM Studio local
 client = OpenAI(
-    base_url=config.LLM_BASE_URL,
-    api_key=config.LLM_API_KEY
+    base_url=settings.LLM_BASE_URL,
+    api_key=settings.LLM_API_KEY
 )
 
 
 def format_context(chunks: list[dict]) -> str:
-    """Formata os trechos recuperados para inclusão no prompt do LLM com identificação de página."""
+    """Formata os trechos recuperados para inclusão no prompt do LLM indicando páginas."""
     if not chunks:
         return "Nenhum trecho de contexto relevante foi recuperado."
         
@@ -27,12 +27,12 @@ def format_context(chunks: list[dict]) -> str:
 def ask(
     question: str,
     chunks: list[dict],
-    temperature: float = config.LLM_TEMPERATURE,
-    max_tokens: int = config.LLM_MAX_TOKENS
+    temperature: float = settings.LLM_TEMPERATURE,
+    max_tokens: int = settings.LLM_MAX_TOKENS
 ) -> str:
     """
-    Envia a pergunta do usuário e os trechos recuperados (contexto) para o LLM local.
-    Retorna a resposta gerada com base estrita no documento.
+    Envia o prompt com o contexto recuperado e a pergunta para o LLM local.
+    Retorna a resposta com fidelidade estrita às fontes.
     """
     if not chunks:
         return (
@@ -42,7 +42,6 @@ def ask(
 
     context_str = format_context(chunks)
     
-    # Monta a mensagem do usuário
     user_message = f"""CONTEXTO RECUPERADO DO DOCUMENTO:
 {context_str}
 
@@ -54,9 +53,9 @@ RESPONDA UTILIZANDO APENAS O CONTEXTO ACIMA. LEMBRE-SE DE CITAR A PÁGINA AO FIN
 
     try:
         response = client.chat.completions.create(
-            model=config.LLM_MODEL_NAME,
+            model=settings.LLM_MODEL_NAME,
             messages=[
-                {"role": "system", "content": config.SYSTEM_PROMPT},
+                {"role": "system", "content": settings.SYSTEM_PROMPT},
                 {"role": "user", "content": user_message}
             ],
             temperature=temperature,
@@ -69,17 +68,6 @@ RESPONDA UTILIZANDO APENAS O CONTEXTO ACIMA. LEMBRE-SE DE CITAR A PÁGINA AO FIN
         if "Connection refused" in error_msg or "127.0.0.1:1234" in error_msg:
             return (
                 "❌ **Erro de Conexão com o LM Studio:** Não foi possível conectar ao servidor local `http://127.0.0.1:1234/v1`.\n\n"
-                "👉 *Por favor, verifique se o LM Studio está aberto, se o servidor local (Local Server) foi iniciado na porta 1234 e se um modelo (ex: Llama 3.1 8B) está carregado.*"
+                "👉 *Por favor, verifique se o LM Studio está aberto, se o servidor local (Local Server) foi iniciado na porta 1234 e se o modelo está carregado.*"
             )
         return f"❌ **Erro ao gerar resposta com o LLM:** {error_msg}"
-
-
-if __name__ == "__main__":
-    # Teste rápido no terminal
-    from rag_retriever import retrieve
-    pergunta = "O que diz o POP sobre a leitura do medidor?"
-    print(f"Buscando trechos para: '{pergunta}'...")
-    ctx = retrieve(pergunta, n_rerank=3)
-    print("Gerando resposta com LLM...")
-    resposta = ask(pergunta, ctx)
-    print(f"\nResposta do Sistema:\n{resposta}")

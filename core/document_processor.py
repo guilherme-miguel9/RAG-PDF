@@ -1,8 +1,8 @@
 import os
 import re
 import hashlib
-import chromadb
-from sentence_transformers import SentenceTransformer
+from config import settings
+from core import vector_store
 
 try:
     from docling.document_converter import DocumentConverter, PdfFormatOption
@@ -13,70 +13,26 @@ try:
 except ImportError:
     HAS_DOCLING = False
 
-import fitz  # PyMuPDF (sempre disponível como fallback ou principal)
-import config
-
-# Inicialização do cliente ChromaDB
-client = chromadb.PersistentClient(path=config.DB_PATH)
-
-# Cache em memória do modelo de embedding para evitar recarregamento
-_model_cache = None
-
-
-def get_embedding_model():
-    """Carrega o modelo de embeddings (com cache em memória)."""
-    global _model_cache
-    if _model_cache is None:
-        print(f"🧠 Carregando modelo de embedding: {config.EMBEDDING_MODEL}...")
-        _model_cache = SentenceTransformer(config.EMBEDDING_MODEL)
-    return _model_cache
-
-
-def get_collection():
-    """Obtém ou cria a coleção no ChromaDB com métrica de distância cosseno."""
-    return client.get_or_create_collection(
-        name=config.COLLECTION_NAME,
-        metadata={"hnsw:space": "cosine"}
-    )
-
-
-def get_collection_stats() -> dict:
-    """Retorna estatísticas da coleção para exibição na interface."""
-    try:
-        coll = client.get_collection(config.COLLECTION_NAME)
-        count = coll.count()
-        return {
-            "exists": True,
-            "count": count,
-            "collection_name": config.COLLECTION_NAME,
-            "db_path": config.DB_PATH
-        }
-    except Exception:
-        return {
-            "exists": False,
-            "count": 0,
-            "collection_name": config.COLLECTION_NAME,
-            "db_path": config.DB_PATH
-        }
+import fitz  # PyMuPDF (fallback rápido ou alternativo)
 
 
 # =========================================================
-# 1. EXTRAÇÃO DE TEXTO DO PDF (POR PÁGINA COM MARKDOWN/OCR OPT)
+# 1. EXTRAÇÃO DE TEXTO DO PDF (POR PÁGINA EM MARKDOWN)
 # =========================================================
 
 def extract_pages(pdf_path: str, use_docling: bool = True) -> list[dict]:
     """
     Extrai o texto por página de um PDF.
-    Tenta usar Docling para conversão estruturada em Markdown (preserva tabelas e listas).
-    Usa PyMuPDF como fallback rápido ou se Docling não estiver disponível.
+    Utiliza o Docling para conversão em Markdown estruturado (tabelas e listas preservadas).
+    Aciona fallback automático ao PyMuPDF em caso de indisponibilidade ou erro.
     """
     pages = []
     
     if use_docling and HAS_DOCLING:
-        print(f"📄 Extraindo '{os.path.basename(pdf_path)}' estruturado com Docling (Markdown)...")
+        print(f"📄 [Processor] Extraindo '{os.path.basename(pdf_path)}' via Docling (Markdown)...")
         try:
             pipeline_options = PdfPipelineOptions()
-            pipeline_options.do_ocr = False  # Para PDFs nativos, OCR desativado é mais rápido
+            pipeline_options.do_ocr = False
             
             converter = DocumentConverter(
                 format_options={
@@ -87,11 +43,9 @@ def extract_pages(pdf_path: str, use_docling: bool = True) -> list[dict]:
                 }
             )
             
-            # Converte e itera pelos itens para mapear por página
             result = converter.convert(pdf_path)
             doc = result.document
             
-            # Vamos mapear texto por página
             page_dict = {}
             for element, _level in doc.iterate_items():
                 text = element.text.strip() if hasattr(element, "text") else ""
@@ -113,18 +67,17 @@ def extract_pages(pdf_path: str, use_docling: bool = True) -> list[dict]:
                 })
             
             if pages:
-                print(f"✅ {len(pages)} páginas extraídas com sucesso via Docling.")
+                print(f"✅ [Processor] {len(pages)} páginas convertidas com sucesso via Docling.")
                 return pages
         except Exception as e:
-            print(f"⚠️ Aviso: Erro no Docling ({e}). Alternando para fallback PyMuPDF...")
+            print(f"⚠️ [Processor] Aviso: Falha na extração Docling ({e}). Alternando para PyMuPDF...")
 
-    # Fallback / Extração com PyMuPDF
-    print(f"📄 Extraindo '{os.path.basename(pdf_path)}' com PyMuPDF (fitz)...")
+    # Extração de Fallback com PyMuPDF
+    print(f"📄 [Processor] Extraindo '{os.path.basename(pdf_path)}' com PyMuPDF (fitz)...")
     doc = fitz.open(pdf_path)
     for i, page in enumerate(doc):
         text = page.get_text("text").strip()
         if text:
-            # Limpeza leve preservando quebras de parágrafo
             text = re.sub(r"[ \t]+", " ", text)
             text = re.sub(r"\n{3,}", "\n\n", text)
             pages.append({
@@ -132,18 +85,18 @@ def extract_pages(pdf_path: str, use_docling: bool = True) -> list[dict]:
                 "text": text
             })
     doc.close()
-    print(f"✅ {len(pages)} páginas extraídas via PyMuPDF.")
+    print(f"✅ [Processor] {len(pages)} páginas extraídas via PyMuPDF.")
     return pages
 
 
 # =========================================================
-# 2. CHUNKING SEMÂNTICO (POR PARÁGRAFOS COM OVERLAP SEGURO)
+# 2. CHUNKING SEMÂNTICO INTELIGENTE
 # =========================================================
 
-def semantic_chunking(pages: list[dict], chunk_size: int = config.CHUNK_SIZE, overlap: int = config.CHUNK_OVERLAP) -> tuple[list, list, list]:
+def semantic_chunking(pages: list[dict], chunk_size: int = settings.CHUNK_SIZE, overlap: int = settings.CHUNK_OVERLAP) -> tuple[list, list, list]:
     """
-    Divide o texto em chunks respeitando limites semânticos (parágrafos/frases),
-    sem cortar palavras no meio, e mantendo metadados detalhados de página.
+    Divide o texto em fragmentos respeitando limites de parágrafos e frases sem cortar palavras.
+    Gera metadados contendo o número exato da página de origem.
     """
     all_chunks = []
     all_metadatas = []
@@ -153,7 +106,6 @@ def semantic_chunking(pages: list[dict], chunk_size: int = config.CHUNK_SIZE, ov
         page_num = page_data["page_num"]
         page_text = page_data["text"]
         
-        # Divide por parágrafos duplos ou quebras de linha com listas
         paragraphs = re.split(r"\n{2,}", page_text)
         paragraphs = [p.strip() for p in paragraphs if p.strip()]
         
@@ -171,21 +123,17 @@ def semantic_chunking(pages: list[dict], chunk_size: int = config.CHUNK_SIZE, ov
                     chunk_text = "\n\n".join(buffer).strip()
                     _add_chunk(chunk_text, page_num, all_chunks, all_metadatas, all_ids)
                     
-                    # Overlap inteligente: pega o último parágrafo inteiro ou últimas frases
                     if len(buffer[-1]) <= overlap:
                         buffer = [buffer[-1], para]
                         buffer_len = len(buffer[0]) + para_len + 2
                     else:
-                        # Se o último parágrafo for maior que overlap, pega as últimas palavras/overlap dele
                         last_text = buffer[-1][-overlap:]
-                        # Acha o primeiro espaço para não cortar palavra
                         space_idx = last_text.find(" ")
                         if space_idx != -1:
                             last_text = last_text[space_idx:].strip()
                         buffer = [last_text, para]
                         buffer_len = len(last_text) + para_len + 2
                 else:
-                    # Parágrafo único gigante (> chunk_size): divide por frases ou blocos de palavras
                     _split_long_paragraph(para, page_num, chunk_size, overlap, all_chunks, all_metadatas, all_ids)
                     buffer = []
                     buffer_len = 0
@@ -198,7 +146,7 @@ def semantic_chunking(pages: list[dict], chunk_size: int = config.CHUNK_SIZE, ov
 
 
 def _split_long_paragraph(text: str, page_num: int, max_size: int, overlap: int, chunks: list, metadatas: list, ids: list):
-    """Auxiliar para fatiar parágrafos muito longos sem cortar palavras no meio."""
+    """Auxiliar para quebrar parágrafos muito extensos sem cortar palavras ao meio."""
     words = text.split()
     current = []
     current_size = 0
@@ -208,7 +156,6 @@ def _split_long_paragraph(text: str, page_num: int, max_size: int, overlap: int,
             chunk_str = " ".join(current)
             _add_chunk(chunk_str, page_num, chunks, metadatas, ids)
             
-            # Mantém as últimas N palavras para o overlap
             overlap_words = []
             overlap_size = 0
             for ow in reversed(current):
@@ -228,49 +175,39 @@ def _split_long_paragraph(text: str, page_num: int, max_size: int, overlap: int,
 
 
 def _add_chunk(text: str, page_num: int, chunks: list, metadatas: list, ids: list):
-    """Adiciona chunk à lista, gerando ID único baseado em hash MD5 do texto e página."""
+    """Grava o chunk e gera seu hash MD5 para unicidade."""
     if not text.strip():
         return
-    # Hash md5 para unicidade e deduplicação
     chunk_id = hashlib.md5(f"p{page_num}_{text[:100]}".encode("utf-8")).hexdigest()
     chunks.append(text.strip())
     metadatas.append({
         "page_num": page_num,
-        "source": config.COLLECTION_NAME
+        "source": settings.COLLECTION_NAME
     })
     ids.append(chunk_id)
 
 
 # =========================================================
-# 3. INDEXAÇÃO PRINCIPAL (CHROMADB)
+# 3. ROTINA PRINCIPAL DE INDEXAÇÃO
 # =========================================================
 
 def index_pdf(pdf_path: str, force_reindex: bool = False) -> int:
     """
-    Processa o PDF, divide em chunks semânticos, calcula embeddings e salva no ChromaDB.
-    Se force_reindex for True, limpa e recria a coleção do zero.
-    Retorna o número total de trechos indexados na coleção.
+    Orquestra a extração do PDF, fragmentação semântica e gravação vetorial no ChromaDB.
     """
     if force_reindex:
-        print(f"🔄 Forçando recriação da coleção '{config.COLLECTION_NAME}'...")
-        try:
-            client.delete_collection(config.COLLECTION_NAME)
-        except Exception:
-            pass
+        vector_store.delete_collection()
 
-    collection = get_collection()
+    collection = vector_store.get_collection()
     
-    # Extrai páginas
     pages = extract_pages(pdf_path, use_docling=True)
     if not pages:
-        print("❌ Nenhum texto foi extraído do PDF.")
+        print("❌ [Processor] Nenhum texto foi identificado no PDF.")
         return 0
         
-    # Gera chunks
-    chunks, metadatas, ids = semantic_chunking(pages, config.CHUNK_SIZE, config.CHUNK_OVERLAP)
-    print(f"✂️ Gerados {len(chunks)} chunks semânticos de {len(pages)} páginas.")
+    chunks, metadatas, ids = semantic_chunking(pages, settings.CHUNK_SIZE, settings.CHUNK_OVERLAP)
+    print(f"✂️ [Processor] Gerados {len(chunks)} blocos semânticos de {len(pages)} páginas.")
     
-    # Verifica quais chunks já estão no banco para indexação incremental
     existing_ids = set()
     try:
         existing = collection.get(include=[])
@@ -289,12 +226,11 @@ def index_pdf(pdf_path: str, force_reindex: bool = False) -> int:
             new_ids.append(i)
             
     if new_chunks:
-        print(f"🧠 Gerando embeddings para {len(new_chunks)} novos chunks com o modelo '{config.EMBEDDING_MODEL}'...")
-        model = get_embedding_model()
+        print(f"🧠 [Processor] Computando embeddings para {len(new_chunks)} novos blocos...")
+        model = vector_store.get_embedding_model()
         
-        # Se for modelo E5, adiciona prefixo 'passage: ' aos documentos na indexação
         texts_to_encode = new_chunks
-        if "e5" in config.EMBEDDING_MODEL.lower():
+        if "e5" in settings.EMBEDDING_MODEL.lower():
             texts_to_encode = [f"passage: {t}" for t in new_chunks]
             
         embeddings = model.encode(
@@ -304,8 +240,7 @@ def index_pdf(pdf_path: str, force_reindex: bool = False) -> int:
             batch_size=32
         ).tolist()
         
-        print(f"💾 Salvando {len(new_chunks)} novos chunks na coleção ChromaDB...")
-        # Lote de inserções se for muito grande
+        print(f"💾 [Processor] Armazenando no ChromaDB...")
         batch_size = 500
         for b in range(0, len(new_chunks), batch_size):
             collection.add(
@@ -314,19 +249,8 @@ def index_pdf(pdf_path: str, force_reindex: bool = False) -> int:
                 metadatas=new_metadatas[b:b+batch_size],
                 embeddings=embeddings[b:b+batch_size]
             )
-        print("✅ Indexação incremental concluída com sucesso.")
+        print("✅ [Processor] Indexação concluída com sucesso.")
     else:
-        print("⚡ Todos os chunks do PDF já estavam indexados no ChromaDB.")
+        print("⚡ [Processor] Documento já indexado integralmente no ChromaDB.")
         
     return collection.count()
-
-
-if __name__ == "__main__":
-    import sys
-    force = "--force" in sys.argv or "-f" in sys.argv
-    pdf = config.DEFAULT_PDF_PATH
-    if os.path.exists(pdf):
-        n = index_pdf(pdf, force_reindex=force)
-        print(f"\n✨ Total de chunks no banco: {n}")
-    else:
-        print(f"❌ Arquivo PDF não encontrado em: {pdf}")

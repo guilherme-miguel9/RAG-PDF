@@ -1,61 +1,55 @@
 import os
 
 # =========================================================
-# CAMINHOS E DIRETÓRIOS
+# CAMINHOS E DIRETÓRIOS DO PROJETO (ARQUITETURA LIMPA)
 # =========================================================
-# Diretório base do módulo pdf_chat
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+# Diretório base (config/)
+CONFIG_DIR = os.path.dirname(os.path.abspath(__file__))
 
-# Diretório raiz do projeto RAG_LEITURA
-PROJECT_ROOT = os.path.abspath(os.path.join(BASE_DIR, ".."))
+# Diretório raiz do projeto RAG-PDF
+PROJECT_ROOT = os.path.abspath(os.path.join(CONFIG_DIR, ".."))
 
-# Caminho do banco vetorial ChromaDB (usando o diretório memoria_atualizada na raiz)
-DB_PATH = os.path.join(PROJECT_ROOT, "memoria_atualizada")
+# Diretórios estruturados de dados (protegidos no .gitignore)
+DATA_DIR = os.path.join(PROJECT_ROOT, "data")
+RAW_DATA_DIR = os.path.join(DATA_DIR, "raw")
+DB_PATH = os.path.join(DATA_DIR, "chroma_db")
 
-# Caminho padrão para o PDF original de leitura (se o usuário não fizer upload no Streamlit)
-DEFAULT_PDF_PATH = os.path.join(PROJECT_ROOT, "pop_leitura.pdf")
+# Caminho padrão para o PDF original do POP (em data/raw/pop_leitura.pdf)
+DEFAULT_PDF_PATH = os.path.join(RAW_DATA_DIR, "pop_leitura.pdf")
 
-# Nome da coleção no ChromaDB
+# Nome da coleção no banco ChromaDB
 COLLECTION_NAME = "pdf_rag_producao"
 
 # =========================================================
 # MODELOS DE EMBEDDINGS E RERANKING
 # =========================================================
-# Modelo de Embedding Bi-Encoder para busca vetorial rápida (Estágio 1)
-# Opções populares e testadas:
-# - 'paraphrase-multilingual-mpnet-base-v2' (Ótimo para PT-BR e semântica geral)
-# - 'intfloat/multilingual-e5-base' ou 'intfloat/multilingual-e5-large' (Requer prefixos 'passage: '/'query: ')
+# Estágio 1 - Busca Vetorial Rápida (Bi-Encoder)
 EMBEDDING_MODEL = "paraphrase-multilingual-mpnet-base-v2"
 
-# Modelo de Reranking Cross-Encoder (Estágio 2) para máxima precisão
+# Estágio 2 - Reranking de Alta Precisão (Cross-Encoder)
 RERANKER_MODEL = "cross-encoder/mmarco-mMiniLMv2-L12-H384-v1"
 
 # =========================================================
-# PARÂMETROS DE CHUNKING E RETRIEVAL
+# PARÂMETROS DE DIVISÃO E RECUPERAÇÃO DE TEXTO
 # =========================================================
-# Tamanho e sobreposição dos chunks (em caracteres para o divisor semântico)
 CHUNK_SIZE = 700
 CHUNK_OVERLAP = 120
 
-# Quantidade de trechos recuperados no Estágio 1 (Busca Vetorial no ChromaDB)
 TOP_K_RETRIEVAL = 12
-
-# Quantidade de trechos selecionados após Reranking no Estágio 2 (enviados ao LLM)
 TOP_K_RERANK = 4
 
 # =========================================================
-# CONFIGURAÇÕES DO LLM LOCAL (LM STUDIO)
+# CONFIGURAÇÕES DO SERVIDOR LLM LOCAL (LM STUDIO)
 # =========================================================
 LLM_BASE_URL = "http://127.0.0.1:1234/v1"
 LLM_API_KEY = "lm-studio"
 LLM_MODEL_NAME = "meta-llama-3.1-8b-instruct"
 
-# Temperatura (0.1 a 0.3 recomendada para RAG factual sem alucinações)
 LLM_TEMPERATURE = 0.1
 LLM_MAX_TOKENS = 2048
 
 # =========================================================
-# SYSTEM PROMPTS
+# PROMPTS E INSTRUÇÕES TÉCNICAS
 # =========================================================
 SYSTEM_PROMPT = """Você é um assistente técnico especializado no conteúdo do documento/Procedimento Operacional fornecido no contexto.
 
