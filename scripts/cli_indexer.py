@@ -8,6 +8,13 @@ os.environ["OPENBLAS_NUM_THREADS"] = "1"
 os.environ["VECLIB_MAXIMUM_THREADS"] = "1"
 os.environ["NUMEXPR_NUM_THREADS"] = "1"
 
+# Configura saída do terminal para UTF-8 no Windows evitando UnicodeEncodeError
+if hasattr(sys.stdout, "reconfigure"):
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+
 # Adiciona a raiz do projeto ao sys.path para importar config e core
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
@@ -17,7 +24,7 @@ from core import document_processor, vector_store
 
 def main():
     print("=" * 65)
-    print(" 🛠️  INDEXADOR OFFLINE LANGCHAIN + DOCLING (CLI)")
+    print("[CLI] INDEXADOR OFFLINE LANGCHAIN + DOCLING")
     print("=" * 65)
     
     force_reindex = "--force" in sys.argv or "-f" in sys.argv
