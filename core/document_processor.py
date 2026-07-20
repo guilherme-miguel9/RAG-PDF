@@ -13,7 +13,7 @@ try:
 except ImportError:
     HAS_DOCLING = False
 
-import fitz  # PyMuPDF (fallback rápido ou alternativo)
+import fitz  # PyMuPDF (fallback)
 
 
 # =========================================================
@@ -29,7 +29,7 @@ def extract_pages(pdf_path: str, use_docling: bool = True) -> list[dict]:
     pages = []
     
     if use_docling and HAS_DOCLING:
-        print(f"📄 [Processor] Extraindo '{os.path.basename(pdf_path)}' via Docling (Markdown)...")
+        print(f"[Processor] Extraindo '{os.path.basename(pdf_path)}' via Docling (Markdown)...")
         try:
             pipeline_options = PdfPipelineOptions()
             pipeline_options.do_ocr = False
@@ -67,13 +67,13 @@ def extract_pages(pdf_path: str, use_docling: bool = True) -> list[dict]:
                 })
             
             if pages:
-                print(f"✅ [Processor] {len(pages)} páginas convertidas com sucesso via Docling.")
+                print(f"[Processor] {len(pages)} páginas convertidas com sucesso via Docling.")
                 return pages
         except Exception as e:
-            print(f"⚠️ [Processor] Aviso: Falha na extração Docling ({e}). Alternando para PyMuPDF...")
+            print(f"[Processor] Aviso: Falha na extração Docling ({e}). Alternando para PyMuPDF...")
 
     # Extração de Fallback com PyMuPDF
-    print(f"📄 [Processor] Extraindo '{os.path.basename(pdf_path)}' com PyMuPDF (fitz)...")
+    print(f"[Processor] Extraindo '{os.path.basename(pdf_path)}' com PyMuPDF (fitz)...")
     doc = fitz.open(pdf_path)
     for i, page in enumerate(doc):
         text = page.get_text("text").strip()
@@ -85,7 +85,7 @@ def extract_pages(pdf_path: str, use_docling: bool = True) -> list[dict]:
                 "text": text
             })
     doc.close()
-    print(f"✅ [Processor] {len(pages)} páginas extraídas via PyMuPDF.")
+    print(f"[Processor] {len(pages)} páginas extraídas via PyMuPDF.")
     return pages
 
 
@@ -202,11 +202,11 @@ def index_pdf(pdf_path: str, force_reindex: bool = False) -> int:
     
     pages = extract_pages(pdf_path, use_docling=True)
     if not pages:
-        print("❌ [Processor] Nenhum texto foi identificado no PDF.")
+        print("[Processor] Nenhum texto foi identificado no PDF.")
         return 0
         
     chunks, metadatas, ids = semantic_chunking(pages, settings.CHUNK_SIZE, settings.CHUNK_OVERLAP)
-    print(f"✂️ [Processor] Gerados {len(chunks)} blocos semânticos de {len(pages)} páginas.")
+    print(f"[Processor] Gerados {len(chunks)} blocos semânticos de {len(pages)} páginas.")
     
     existing_ids = set()
     try:
@@ -226,7 +226,7 @@ def index_pdf(pdf_path: str, force_reindex: bool = False) -> int:
             new_ids.append(i)
             
     if new_chunks:
-        print(f"🧠 [Processor] Computando embeddings para {len(new_chunks)} novos blocos...")
+        print(f"[Processor] Computando embeddings para {len(new_chunks)} novos blocos...")
         model = vector_store.get_embedding_model()
         
         texts_to_encode = new_chunks
@@ -240,7 +240,7 @@ def index_pdf(pdf_path: str, force_reindex: bool = False) -> int:
             batch_size=32
         ).tolist()
         
-        print(f"💾 [Processor] Armazenando no ChromaDB...")
+        print("[Processor] Armazenando no ChromaDB...")
         batch_size = 500
         for b in range(0, len(new_chunks), batch_size):
             collection.add(
@@ -249,8 +249,8 @@ def index_pdf(pdf_path: str, force_reindex: bool = False) -> int:
                 metadatas=new_metadatas[b:b+batch_size],
                 embeddings=embeddings[b:b+batch_size]
             )
-        print("✅ [Processor] Indexação concluída com sucesso.")
+        print("[Processor] Indexação concluída com sucesso.")
     else:
-        print("⚡ [Processor] Documento já indexado integralmente no ChromaDB.")
+        print("[Processor] Documento já indexado integralmente no ChromaDB.")
         
     return collection.count()

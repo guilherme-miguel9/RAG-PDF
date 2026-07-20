@@ -3,7 +3,6 @@ from sentence_transformers import CrossEncoder
 from config import settings
 from core import vector_store
 
-# Cache em memória para o modelo Cross-Encoder (Reranker)
 _reranker_model_cache = None
 
 
@@ -11,7 +10,7 @@ def get_reranker_model():
     """Carrega ou retorna a instância em cache do modelo de Reranking Cross-Encoder."""
     global _reranker_model_cache
     if _reranker_model_cache is None:
-        print(f"🎯 [Retriever] Carregando modelo Cross-Encoder: {settings.RERANKER_MODEL}...")
+        print(f"[Retriever] Carregando modelo Cross-Encoder: {settings.RERANKER_MODEL}...")
         _reranker_model_cache = CrossEncoder(settings.RERANKER_MODEL)
     return _reranker_model_cache
 
@@ -69,7 +68,7 @@ def retrieve(
             include=["documents", "metadatas", "distances"]
         )
     except Exception as e:
-        print(f"❌ [Retriever] Erro ao consultar o banco vetorial: {e}")
+        print(f"[Retriever] Erro ao consultar o banco vetorial: {e}")
         return []
         
     docs = results.get("documents", [[]])[0]
@@ -92,7 +91,6 @@ def retrieve(
         return candidates[:n_rerank]
         
     # 4. Reranking com Cross-Encoder (Estágio 2)
-    # A comparação do Cross-Encoder é sempre feita usando a pergunta original (limpa) do usuário
     reranker = get_reranker_model()
     pairs = [(query, c["text"]) for c in candidates]
     
@@ -103,7 +101,7 @@ def retrieve(
             
         candidates.sort(key=lambda x: x["rerank_score"], reverse=True)
     except Exception as e:
-        print(f"⚠️ [Retriever] Aviso no Reranker ({e}). Usando ordenação original do Bi-Encoder.")
+        print(f"[Retriever] Aviso no Reranker ({e}). Usando ordenação original do Bi-Encoder.")
         candidates.sort(key=lambda x: x["vector_distance"])
         
     return candidates[:n_rerank]
