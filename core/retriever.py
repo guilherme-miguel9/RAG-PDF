@@ -1,5 +1,6 @@
 import re
 from sentence_transformers import CrossEncoder
+from langchain_core.documents import Document
 from config import settings
 from core import vector_store
 
@@ -7,101 +8,64 @@ _reranker_model_cache = None
 
 
 def get_reranker_model():
-    """Carrega ou retorna a instância em cache do modelo de Reranking Cross-Encoder."""
+    """Carrega em cache o modelo Cross-Encoder (Reranker) de alta precisão."""
     global _reranker_model_cache
     if _reranker_model_cache is None:
-        print(f"[Retriever] Carregando modelo Cross-Encoder: {settings.RERANKER_MODEL}...")
+        print(f"[LangChain Retriever] Carregando modelo Cross-Encoder Reranker: {settings.RERANKER_MODEL}")
         _reranker_model_cache = CrossEncoder(settings.RERANKER_MODEL)
     return _reranker_model_cache
 
 
-def expand_query(query: str) -> str:
+def retrieve(query: str, top_k_retrieval: int = settings.TOP_K_RETRIEVAL, top_k_rerank: int = settings.TOP_K_RERANK) -> list[dict]:
     """
-    Expande a query do usuário adicionando termos correlatos para maximizar o recall no Estágio 1.
+    Executa a recuperação em 2 estágios utilizando a estrutura LangChain:
+    1. Retrieval com Bi-Encoder via Chroma (Busca de similaridade com pontuação no LangChain).
+    2. Reranking com Cross-Encoder de todos os candidatos.
+    Retorna uma lista de dicionários padronizada com conteúdo, pontuações e metadados.
     """
-    expansions = {
-        r"list[ae]|liste|quais (são os|os|as)|enumere": "lista itens enumeração requisitos",
-        r"o que [eé]|explique|defina|definição|significa": "definição conceito descrição explicação significado",
-        r"como (fazer|realizar|executar|funciona|é feito|proceder)": "procedimento passo etapa modo instrução execução",
-        r"procedimento|protocolo|processo|rotina": "procedimento protocolo etapas instruções passos rotina",
-        r"nota[s]?|observa[cç][aã]o|aviso|atenção": "nota observação aviso atenção importante cuidado",
-        r"objetivo[s]?|finalidade|para que": "objetivo finalidade propósito meta razão",
-        r"responsável|quem (deve|faz|realiza)": "responsável executor função encarregado cargo",
-    }
-    expanded = query
-    for pattern, extra in expansions.items():
-        if re.search(pattern, query, re.IGNORECASE):
-            expanded = f"{query} {extra}"
-            break
-    return expanded
-
-
-def retrieve(
-    query: str,
-    n_retrieval: int = settings.TOP_K_RETRIEVAL,
-    n_rerank: int = settings.TOP_K_RERANK,
-    use_reranker: bool = True
-) -> list[dict]:
-    """
-    Executa a recuperação em 2 estágios:
-    1. Busca vetorial rápida por similaridade de cosseno (ChromaDB + Bi-Encoder).
-    2. Refinamento e reordenação de precisão (Cross-Encoder Reranker).
-    """
-    collection = vector_store.get_collection()
-    embed_model = vector_store.get_embedding_model()
+    db = vector_store.get_vector_db()
     
-    # 1. Expansão de Query para Estágio 1
-    expanded_query = expand_query(query)
+    # 1. Estágio 1: Retrieval Inicial no LangChain
+    # O Chroma no LangChain retorna tuplas (Document, score) onde score na métrica cosseno varia segundo a distância
+    docs_with_scores = db.similarity_search_with_score(query, k=top_k_retrieval)
     
-    # 2. Embedding da consulta
-    query_text_for_embedding = expanded_query
-    if "e5" in settings.EMBEDDING_MODEL.lower():
-        query_text_for_embedding = f"query: {expanded_query}"
-        
-    query_vector = embed_model.encode([query_text_for_embedding], normalize_embeddings=True)[0]
-    
-    # 3. Consulta ao ChromaDB (Estágio 1)
-    try:
-        results = collection.query(
-            query_embeddings=[query_vector.tolist()],
-            n_results=n_retrieval,
-            include=["documents", "metadatas", "distances"]
-        )
-    except Exception as e:
-        print(f"[Retriever] Erro ao consultar o banco vetorial: {e}")
-        return []
-        
-    docs = results.get("documents", [[]])[0]
-    metas = results.get("metadatas", [[]])[0]
-    distances = results.get("distances", [[]])[0]
-    
-    if not docs:
+    if not docs_with_scores:
+        print(f"[LangChain Retriever] Nenhum documento recuperado para a busca: '{query}'")
         return []
         
     candidates = []
-    for doc, meta, dist in zip(docs, metas, distances):
+    for doc, dist_score in docs_with_scores:
+        # Em cosseno no Chroma: similaridade = 1.0 - dist_score
+        sim_score = max(0.0, float(1.0 - dist_score))
         candidates.append({
-            "text": doc,
-            "page_num": meta.get("page_num", "N/A"),
-            "source": meta.get("source", "PDF"),
-            "vector_distance": round(dist, 4)
+            "text": doc.page_content,
+            "page_num": doc.metadata.get("page_num", 1),
+            "similarity": sim_score,
+            "langchain_doc": doc
         })
         
-    if not use_reranker or len(candidates) <= 1:
-        return candidates[:n_rerank]
-        
-    # 4. Reranking com Cross-Encoder (Estágio 2)
-    reranker = get_reranker_model()
-    pairs = [(query, c["text"]) for c in candidates]
+    # Filtro de relevância semântica mínima
+    candidates = [c for c in candidates if c["similarity"] >= settings.SIMILARITY_THRESHOLD]
     
-    try:
-        scores = reranker.predict(pairs)
-        for i, score in enumerate(scores):
-            candidates[i]["rerank_score"] = float(round(score, 4))
-            
-        candidates.sort(key=lambda x: x["rerank_score"], reverse=True)
-    except Exception as e:
-        print(f"[Retriever] Aviso no Reranker ({e}). Usando ordenação original do Bi-Encoder.")
-        candidates.sort(key=lambda x: x["vector_distance"])
+    if not candidates:
+        print(f"[LangChain Retriever] Documentos abaixo do limiar de similaridade ({settings.SIMILARITY_THRESHOLD}).")
+        return []
         
-    return candidates[:n_rerank]
+    # 2. Estágio 2: Reranking com Cross-Encoder
+    reranker = get_reranker_model()
+    pairs = [[query, c["text"]] for c in candidates]
+    rerank_scores = reranker.predict(pairs)
+    
+    for i, score in enumerate(rerank_scores):
+        candidates[i]["rerank_score"] = float(score)
+        
+    # Ordena decrescente pelo score do Cross-Encoder
+    candidates.sort(key=lambda x: x["rerank_score"], reverse=True)
+    
+    return candidates[:top_k_rerank]
+
+
+def clean_query(query: str) -> str:
+    """Normaliza a consulta removendo caracteres de controle."""
+    query = re.sub(r"\s+", " ", query)
+    return query.strip()

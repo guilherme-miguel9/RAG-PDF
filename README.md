@@ -6,30 +6,31 @@ O projeto roda com privacidade **100% local** usando o [LM Studio](https://lmstu
 
 ---
 
-## ✨ Destaques e Arquitetura do Sistema
+## ✨ Destaques, Arquitetura LangChain & Apple Design System
 
-O pipeline foi construído combinando as técnicas mais avançadas do estado da arte em RAG:
+O pipeline foi completamente reformulado sobre o ecossistema **LangChain**, combinando processamento estruturado, vetorização de precisão e uma interface com design limpo inspirado nos padrões da Apple:
 
 ```mermaid
 graph TD
     A[📄 PDF / POP em data/raw] -->|Docling| B(Convertido em Markdown Estruturado)
-    B -->|Chunking Semântico| C[Trechos + Metadados de Página]
-    C -->|Bi-Encoder / mpnet| D[(ChromaDB em data/chroma_db)]
+    B -->|Chunking Semântico| C[Objetos LangChain Document + Metadados de Página]
+    C -->|HuggingFaceEmbeddings / mpnet| D[(LangChain Chroma em data/chroma_db)]
     
-    E[❓ Pergunta do Usuário] -->|Expansão de Query| F[Busca Vetorial - Estágio 1]
+    E[❓ Pergunta do Usuário] -->|similarity_search_with_score| F[Busca Vetorial - Estágio 1]
     D --> F
-    F -->|Top 12 Candidatos| G[🎯 Reranker Cross-Encoder - Estágio 2]
-    G -->|Top 4 Trechos Exatos| H[🤖 LLM Local via LM Studio]
-    H -->|Resposta + Citação (Página X)| I[🖥️ Interface Streamlit]
+    F -->|Top 12 Documentos| G[🎯 Reranker Cross-Encoder - Estágio 2]
+    G -->|Top 4 Trechos Exatos| H[🔗 Cadeia LCEL: ChatPromptTemplate + ChatOpenAI]
+    H -->|Resposta + Citação (Página X)| I[🖥️ Interface Streamlit - Apple Design System]
 ```
 
-1. **📄 Ingestão Estruturada com Docling:** Em vez de extração de texto contínuo cru, utilizamos o `Docling` para converter cada página do PDF em **Markdown limpo**, preservando tabelas, listas de verificação, negritos e hierarquias de títulos (com fallback automático para PyMuPDF).
-2. **✂️ Chunking Semântico Inteligente (`core/document_processor.py`):** Divisão de parágrafos e frases que não corta palavras no meio, mantendo sobreposição (`overlap`) coerente e gravando o número exato da página (`page_num`) e hash de deduplicação MD5 para cada trecho.
-3. **🔍 Busca Híbrida em Dois Estágios (`core/retriever.py`):**
-   * **Estágio 1 (Busca Vetorial Ampla):** Utiliza o modelo `paraphrase-multilingual-mpnet-base-v2` (ou `multilingual-e5`) para recuperar os 12 candidatos mais relevantes do banco **ChromaDB** com similaridade de cosseno.
-   * **Estágio 2 (Cross-Encoder Reranking):** Passa os candidatos recuperados pelo modelo de alta precisão `cross-encoder/mmarco-mMiniLMv2-L12-H384-v1`, comparando cada trecho com a pergunta original do usuário para selecionar os top 4 trechos cirúrgicos.
-4. **🚫 Zero Alucinações e Citação de Páginas (`core/generator.py`):** Prompts rigorosamente desenhados para obrigar o LLM a responder **apenas** com o que está no contexto e citar a página correspondente no formato `(Página X)`.
-5. **🔒 Segurança e Privacidade Total:** Nenhum dado sai da sua máquina. O processamento é local via LM Studio. Além disso, regras estritas no `.gitignore` garantem que PDFs, planilhas ou documentos confidenciais nunca sejam acidentalmente commitados no GitHub.
+1. **🔗 Motor Oficial LangChain (`core/`):** Ingestão com conversão direta para objetos `Document` da biblioteca `langchain_core`, integração nativa do `Chroma` via `langchain_chroma` com `HuggingFaceEmbeddings` e cadeias LCEL (`ChatPromptTemplate | ChatOpenAI | StrOutputParser`).
+2. **🎨 Interface Apple Design System (`app.py`):** Design limpo e minimalista que elimina a aparência genérica de painel, trazendo tipografia `Inter / SF Pro`, barra de navegação superior, hero section, botões em formato pílula, cartões flutuantes e zero emojis na interface.
+3. **📄 Ingestão Estruturada com Docling:** Conversão em **Markdown limpo** preservando tabelas, listas de verificação e hierarquias de títulos, com fallback automático e proteção de threads no Windows.
+4. **🔍 Busca Híbrida em Dois Estágios (`core/retriever.py`):**
+   * **Estágio 1 (LangChain Similarity Search):** Recupera os candidatos do banco **Chroma** com similaridade cosseno.
+   * **Estágio 2 (Cross-Encoder Reranking):** Passa os candidatos pelo modelo `cross-encoder/mmarco-mMiniLMv2-L12-H384-v1` para selecionar os top 4 trechos cirúrgicos.
+5. **🚫 Zero Alucinações e Citação de Páginas (`core/generator.py`):** Prompts LCEL rigorosamente desenhados para obrigar o modelo a responder **apenas** com o que está no contexto e citar a página correspondente.
+6. **🔒 Segurança e Privacidade Total:** Nenhum dado sai da sua máquina. O processamento é local via LM Studio.
 
 ---
 

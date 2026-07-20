@@ -1,6 +1,6 @@
 import os
 
-# Define variáveis de ambiente para evitar conflitos de threads (OpenMP/MKL/ONNX) em workers do Streamlit no Windows
+# Define variáveis de ambiente para evitar conflitos de threads (OpenMP/MKL/ONNX) em workers no Windows
 os.environ["OMP_NUM_THREADS"] = "1"
 os.environ["MKL_NUM_THREADS"] = "1"
 os.environ["OPENBLAS_NUM_THREADS"] = "1"
@@ -9,6 +9,7 @@ os.environ["NUMEXPR_NUM_THREADS"] = "1"
 
 import re
 import hashlib
+from langchain_core.documents import Document
 from config import settings
 from core import vector_store
 
@@ -21,7 +22,7 @@ try:
 except ImportError:
     HAS_DOCLING = False
 
-import fitz  # PyMuPDF (fallback)
+import fitz  # PyMuPDF (fallback rápido ou alternativo)
 
 
 # =========================================================
@@ -37,7 +38,7 @@ def extract_pages(pdf_path: str, use_docling: bool = True) -> list[dict]:
     pages = []
     
     if use_docling and HAS_DOCLING:
-        print(f"[Processor] Extraindo '{os.path.basename(pdf_path)}' via Docling (Markdown)...")
+        print(f"[LangChain Processor] Extraindo '{os.path.basename(pdf_path)}' via Docling (Markdown)...")
         try:
             pipeline_options = PdfPipelineOptions()
             pipeline_options.do_ocr = False
@@ -75,13 +76,13 @@ def extract_pages(pdf_path: str, use_docling: bool = True) -> list[dict]:
                 })
             
             if pages:
-                print(f"[Processor] {len(pages)} páginas convertidas com sucesso via Docling.")
+                print(f"[LangChain Processor] {len(pages)} páginas convertidas via Docling com sucesso.")
                 return pages
         except Exception as e:
-            print(f"[Processor] Aviso: Falha na extração Docling ({e}). Alternando para PyMuPDF...")
+            print(f"[LangChain Processor] Aviso na extração Docling ({e}). Alternando para PyMuPDF...")
 
     # Extração de Fallback com PyMuPDF
-    print(f"[Processor] Extraindo '{os.path.basename(pdf_path)}' com PyMuPDF (fitz)...")
+    print(f"[LangChain Processor] Extraindo '{os.path.basename(pdf_path)}' com PyMuPDF (fitz)...")
     doc = fitz.open(pdf_path)
     for i, page in enumerate(doc):
         text = page.get_text("text").strip()
@@ -93,22 +94,22 @@ def extract_pages(pdf_path: str, use_docling: bool = True) -> list[dict]:
                 "text": text
             })
     doc.close()
-    print(f"[Processor] {len(pages)} páginas extraídas via PyMuPDF.")
+    print(f"[LangChain Processor] {len(pages)} páginas extraídas via PyMuPDF.")
     return pages
 
 
 # =========================================================
-# 2. CHUNKING SEMÂNTICO INTELIGENTE
+# 2. CHUNKING SEMÂNTICO EM OBJETOS LANGCHAIN DOCUMENT
 # =========================================================
 
-def semantic_chunking(pages: list[dict], chunk_size: int = settings.CHUNK_SIZE, overlap: int = settings.CHUNK_OVERLAP) -> tuple[list, list, list]:
+def semantic_chunking_to_documents(pages: list[dict], chunk_size: int = settings.CHUNK_SIZE, overlap: int = settings.CHUNK_OVERLAP) -> list[Document]:
     """
     Divide o texto em fragmentos respeitando limites de parágrafos e frases sem cortar palavras.
-    Gera metadados contendo o número exato da página de origem.
+    Converte cada fragmento diretamente em objetos Document oficiais do LangChain.
     """
-    all_chunks = []
-    all_metadatas = []
-    all_ids = []
+    chunks_text = []
+    chunks_meta = []
+    chunks_id = []
     
     for page_data in pages:
         page_num = page_data["page_num"]
@@ -129,7 +130,7 @@ def semantic_chunking(pages: list[dict], chunk_size: int = settings.CHUNK_SIZE, 
             else:
                 if buffer:
                     chunk_text = "\n\n".join(buffer).strip()
-                    _add_chunk(chunk_text, page_num, all_chunks, all_metadatas, all_ids)
+                    _add_raw_chunk(chunk_text, page_num, chunks_text, chunks_meta, chunks_id)
                     
                     if len(buffer[-1]) <= overlap:
                         buffer = [buffer[-1], para]
@@ -142,15 +143,25 @@ def semantic_chunking(pages: list[dict], chunk_size: int = settings.CHUNK_SIZE, 
                         buffer = [last_text, para]
                         buffer_len = len(last_text) + para_len + 2
                 else:
-                    _split_long_paragraph(para, page_num, chunk_size, overlap, all_chunks, all_metadatas, all_ids)
+                    _split_long_paragraph(para, page_num, chunk_size, overlap, chunks_text, chunks_meta, chunks_id)
                     buffer = []
                     buffer_len = 0
         
         if buffer:
             chunk_text = "\n\n".join(buffer).strip()
-            _add_chunk(chunk_text, page_num, all_chunks, all_metadatas, all_ids)
+            _add_raw_chunk(chunk_text, page_num, chunks_text, chunks_meta, chunks_id)
             
-    return all_chunks, all_metadatas, all_ids
+    langchain_docs = []
+    for c_text, c_meta, c_id in zip(chunks_text, chunks_meta, chunks_id):
+        langchain_docs.append(Document(
+            page_content=c_text,
+            metadata={
+                "page_num": c_meta["page_num"],
+                "source": c_meta["source"],
+                "doc_id": c_id
+            }
+        ))
+    return langchain_docs
 
 
 def _split_long_paragraph(text: str, page_num: int, max_size: int, overlap: int, chunks: list, metadatas: list, ids: list):
@@ -162,7 +173,7 @@ def _split_long_paragraph(text: str, page_num: int, max_size: int, overlap: int,
     for w in words:
         if current_size + len(w) + 1 > max_size and current:
             chunk_str = " ".join(current)
-            _add_chunk(chunk_str, page_num, chunks, metadatas, ids)
+            _add_raw_chunk(chunk_str, page_num, chunks, metadatas, ids)
             
             overlap_words = []
             overlap_size = 0
@@ -179,10 +190,10 @@ def _split_long_paragraph(text: str, page_num: int, max_size: int, overlap: int,
         current_size += len(w) + 1
         
     if current:
-        _add_chunk(" ".join(current), page_num, chunks, metadatas, ids)
+        _add_raw_chunk(" ".join(current), page_num, chunks, metadatas, ids)
 
 
-def _add_chunk(text: str, page_num: int, chunks: list, metadatas: list, ids: list):
+def _add_raw_chunk(text: str, page_num: int, chunks: list, metadatas: list, ids: list):
     """Grava o chunk e gera seu hash MD5 para unicidade."""
     if not text.strip():
         return
@@ -196,69 +207,52 @@ def _add_chunk(text: str, page_num: int, chunks: list, metadatas: list, ids: lis
 
 
 # =========================================================
-# 3. ROTINA PRINCIPAL DE INDEXAÇÃO
+# 3. ROTINA PRINCIPAL DE INDEXAÇÃO LANGCHAIN
 # =========================================================
 
 def index_pdf(pdf_path: str, force_reindex: bool = False) -> int:
     """
-    Orquestra a extração do PDF, fragmentação semântica e gravação vetorial no ChromaDB.
+    Orquestra a extração do PDF, fragmentação em objetos Document e gravação no Chroma LangChain.
     """
     if force_reindex:
         vector_store.delete_collection()
 
-    collection = vector_store.get_collection()
+    db = vector_store.get_vector_db()
     
     pages = extract_pages(pdf_path, use_docling=True)
     if not pages:
-        print("[Processor] Nenhum texto foi identificado no PDF.")
+        print("[LangChain Processor] Nenhum texto foi identificado no PDF.")
         return 0
         
-    chunks, metadatas, ids = semantic_chunking(pages, settings.CHUNK_SIZE, settings.CHUNK_OVERLAP)
-    print(f"[Processor] Gerados {len(chunks)} blocos semânticos de {len(pages)} páginas.")
+    langchain_docs = semantic_chunking_to_documents(pages, settings.CHUNK_SIZE, settings.CHUNK_OVERLAP)
+    print(f"[LangChain Processor] Gerados {len(langchain_docs)} documentos LangChain de {len(pages)} páginas.")
     
     existing_ids = set()
     try:
-        existing = collection.get(include=[])
+        existing = db._collection.get(include=[])
         existing_ids = set(existing["ids"])
     except Exception:
         pass
         
-    new_chunks = []
-    new_metadatas = []
+    new_docs = []
     new_ids = []
     
-    for c, m, i in zip(chunks, metadatas, ids):
-        if i not in existing_ids:
-            new_chunks.append(c)
-            new_metadatas.append(m)
-            new_ids.append(i)
+    for doc in langchain_docs:
+        doc_id = doc.metadata.get("doc_id")
+        if doc_id and doc_id not in existing_ids:
+            new_docs.append(doc)
+            new_ids.append(doc_id)
+            existing_ids.add(doc_id)
             
-    if new_chunks:
-        print(f"[Processor] Computando embeddings para {len(new_chunks)} novos blocos...")
-        model = vector_store.get_embedding_model()
-        
-        texts_to_encode = new_chunks
-        if "e5" in settings.EMBEDDING_MODEL.lower():
-            texts_to_encode = [f"passage: {t}" for t in new_chunks]
-            
-        embeddings = model.encode(
-            texts_to_encode,
-            normalize_embeddings=True,
-            show_progress_bar=True,
-            batch_size=32
-        ).tolist()
-        
-        print("[Processor] Armazenando no ChromaDB...")
+    if new_docs:
+        print(f"[LangChain Processor] Armazenando {len(new_docs)} novos documentos na base Chroma LangChain...")
         batch_size = 500
-        for b in range(0, len(new_chunks), batch_size):
-            collection.add(
-                ids=new_ids[b:b+batch_size],
-                documents=new_chunks[b:b+batch_size],
-                metadatas=new_metadatas[b:b+batch_size],
-                embeddings=embeddings[b:b+batch_size]
-            )
-        print("[Processor] Indexação concluída com sucesso.")
+        for b in range(0, len(new_docs), batch_size):
+            batch_docs = new_docs[b:b+batch_size]
+            batch_ids = new_ids[b:b+batch_size]
+            db.add_documents(documents=batch_docs, ids=batch_ids)
+        print("[LangChain Processor] Indexação LangChain concluída com sucesso.")
     else:
-        print("[Processor] Documento já indexado integralmente no ChromaDB.")
+        print("[LangChain Processor] Documentos já presentes na base LangChain.")
         
-    return collection.count()
+    return db._collection.count()

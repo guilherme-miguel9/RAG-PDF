@@ -14,294 +14,388 @@ from config import settings
 from core import document_processor, vector_store, retriever, generator
 
 # =========================================================
-# CONFIGURAÇÃO DA PÁGINA E DESIGN SYSTEM MINIMALISTA
+# CONFIGURAÇÃO DA PÁGINA STREAMLIT
 # =========================================================
 st.set_page_config(
-    page_title="RAG — Assistente de Procedimentos Operacionais",
+    page_title="POP Intelligence — LangChain",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-# Customização CSS Avançada (Design Minimalista, Premium e Responsivo)
-st.markdown("""
+# =========================================================
+# DESIGN SYSTEM PROFISSIONAL — ESTILO APPLE (SF PRO / CLEAN)
+# =========================================================
+APPLE_DESIGN_CSS = """
 <style>
-    /* Tipografia de Sistema de Alta Precisão */
-    html, body, [class*="css"] {
-        font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-        -webkit-font-smoothing: antialiased;
-        letter-spacing: -0.01em;
-    }
+/* Importação de tipografia limpa estilo Apple */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
 
-    /* Redução de margens superiores e padding responsivo */
-    .block-container {
-        padding-top: 2rem !important;
-        padding-bottom: 5rem !important;
-        max-width: 1080px;
-    }
+/* Ocultar elementos nativos de cabeçalho e rodapé do Streamlit */
+header { visibility: hidden; }
+footer { visibility: hidden; }
+#MainMenu { visibility: hidden; }
 
-    /* Títulos e Subtítulos Minimalistas */
-    h1 {
-        font-weight: 700;
-        font-size: 2.2rem !important;
-        letter-spacing: -0.03em;
-        margin-bottom: 0.2rem !important;
-    }
-    h2, h3 {
-        font-weight: 600;
-        letter-spacing: -0.02em;
-    }
-    p, span, div {
-        line-height: 1.55;
-    }
+/* Configuração geral de fonte e fundo neutro */
+html, body, [class*="css"] {
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Inter", sans-serif !important;
+    color: #1d1d1f;
+    background-color: #fbfbfd;
+    -webkit-font-smoothing: antialiased;
+}
 
-    /* Cards e Superfícies (Glassmorphism sutil e bordas refinadas) */
-    .stApp {
-        background-color: transparent;
-    }
-    
-    /* Customização de Botões (Estilo Pill e Feedback Tátil) */
-    .stButton > button {
-        border-radius: 9999px !important;
-        font-weight: 500 !important;
-        padding: 0.5rem 1.4rem !important;
-        border: 1px solid rgba(128, 128, 128, 0.25) !important;
-        background: rgba(128, 128, 128, 0.05) !important;
-        transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1) !important;
-        box-shadow: 0 2px 6px rgba(0, 0, 0, 0.03) !important;
-    }
-    .stButton > button:hover {
-        background: rgba(128, 128, 128, 0.12) !important;
-        border-color: rgba(128, 128, 128, 0.4) !important;
-        transform: translateY(-1px);
-        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08) !important;
-    }
+/* Container principal ajustado para espaçamento generoso e centralizado */
+.block-container {
+    max-width: 1140px !important;
+    padding-top: 1.5rem !important;
+    padding-bottom: 4rem !important;
+}
 
-    /* Sidebar minimalista e estruturada */
-    section[data-testid="stSidebar"] {
-        border-right: 1px solid rgba(128, 128, 128, 0.15);
-    }
-    section[data-testid="stSidebar"] .block-container {
-        padding-top: 2rem !important;
-    }
+/* Barra de Navegação Superior Estilo Apple */
+.apple-navbar {
+    width: 100%;
+    background: rgba(255, 255, 255, 0.8);
+    backdrop-filter: saturate(180%) blur(20px);
+    -webkit-backdrop-filter: saturate(180%) blur(20px);
+    border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+    padding: 0.85rem 1.5rem;
+    margin-bottom: 2.5rem;
+    border-radius: 14px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+.apple-nav-brand {
+    font-weight: 600;
+    font-size: 1.05rem;
+    letter-spacing: -0.02em;
+    color: #1d1d1f;
+}
+.apple-nav-links {
+    display: flex;
+    gap: 1.8rem;
+    font-size: 0.88rem;
+    font-weight: 400;
+    color: #515154;
+}
 
-    /* Blocos de Trecho Recuperado (Cards de Contexto) */
-    .context-card {
-        background: rgba(128, 128, 128, 0.06);
-        border: 1px solid rgba(128, 128, 128, 0.18);
-        border-radius: 12px;
-        padding: 16px;
-        margin-top: 10px;
-        margin-bottom: 12px;
-        font-size: 0.92rem;
-    }
-    .context-header {
-        font-weight: 600;
-        font-size: 0.82rem;
-        text-transform: uppercase;
-        letter-spacing: 0.05em;
-        opacity: 0.75;
-        margin-bottom: 8px;
-    }
+/* Seção Hero Estilo Apple Store */
+.apple-hero {
+    text-align: center;
+    padding: 3rem 1rem 3.5rem 1rem;
+    max-width: 800px;
+    margin: 0 auto;
+}
+.apple-pill-badge {
+    display: inline-block;
+    background-color: #f5f5f7;
+    color: #515154;
+    font-size: 0.78rem;
+    font-weight: 500;
+    padding: 0.35rem 0.9rem;
+    border-radius: 9999px;
+    border: 1px solid rgba(0,0,0,0.06);
+    margin-bottom: 1.2rem;
+    letter-spacing: -0.01em;
+}
+.apple-title {
+    font-size: 3.4rem !important;
+    font-weight: 700 !important;
+    letter-spacing: -0.035em !important;
+    line-height: 1.08 !important;
+    color: #1d1d1f !important;
+    margin-bottom: 1rem !important;
+}
+.apple-subtitle {
+    font-size: 1.25rem !important;
+    font-weight: 400 !important;
+    color: #6e6e73 !important;
+    line-height: 1.45 !important;
+    letter-spacing: -0.015em !important;
+}
 
-    /* Entrada de chat flutuante minimalista */
-    .stChatInput > div {
-        border-radius: 9999px !important;
-        border: 1px solid rgba(128, 128, 128, 0.25) !important;
-        background: rgba(128, 128, 128, 0.04) !important;
-    }
-    .stChatInput > div:focus-within {
-        border-color: rgba(128, 128, 128, 0.6) !important;
-        box-shadow: 0 0 0 2px rgba(128, 128, 128, 0.15) !important;
-    }
+/* Cartões e Contêineres minimalistas com sombras suaves */
+.apple-card {
+    background: #ffffff;
+    border: 1px solid rgba(0, 0, 0, 0.06);
+    border-radius: 18px;
+    padding: 1.8rem;
+    box-shadow: 0 12px 34px rgba(0, 0, 0, 0.035);
+    margin-bottom: 1.5rem;
+    transition: box-shadow 0.3s ease;
+}
+.apple-card:hover {
+    box-shadow: 0 16px 42px rgba(0, 0, 0, 0.06);
+}
+.apple-card-title {
+    font-size: 1.15rem;
+    font-weight: 600;
+    color: #1d1d1f;
+    margin-bottom: 0.4rem;
+    letter-spacing: -0.02em;
+}
+.apple-card-desc {
+    font-size: 0.92rem;
+    color: #6e6e73;
+    line-height: 1.4;
+}
 
-    /* Expanders limpos sem bordas pesadas */
-    .streamlit-expanderHeader {
-        font-size: 0.9rem !important;
-        font-weight: 500 !important;
-        border-radius: 8px !important;
-    }
+/* Customização de Botões - Formato Pílula (Apple Pill) */
+div.stButton > button {
+    border-radius: 9999px !important;
+    font-weight: 500 !important;
+    font-size: 0.92rem !important;
+    padding: 0.55rem 1.4rem !important;
+    border: none !important;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1) !important;
+    letter-spacing: -0.01em !important;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.05) !important;
+}
+/* Botão primário com azul Apple (#0071e3) ou cinza escuro */
+div.stButton > button:first-child {
+    background-color: #0071e3 !important;
+    color: #ffffff !important;
+}
+div.stButton > button:first-child:hover {
+    background-color: #0077ed !important;
+    transform: scale(1.015);
+    box-shadow: 0 4px 12px rgba(0, 113, 227, 0.25) !important;
+}
+
+/* Botão secundário / upload */
+div[data-testid="stFileUploader"] section {
+    border-radius: 16px !important;
+    border: 1.5px dashed rgba(0,0,0,0.15) !important;
+    background-color: #ffffff !important;
+    padding: 1.5rem !important;
+}
+
+/* Ajustes na Barra Lateral (Sidebar) */
+section[data-testid="stSidebar"] {
+    background-color: #f5f5f7 !important;
+    border-right: 1px solid rgba(0,0,0,0.06) !important;
+}
+section[data-testid="stSidebar"] .block-container {
+    padding-top: 2rem !important;
+}
+
+/* Campos de entrada e caixas de texto */
+.stTextInput > div > div > input, .stTextArea > div > div > textarea {
+    border-radius: 12px !important;
+    border: 1px solid rgba(0,0,0,0.12) !important;
+    padding: 0.65rem 0.9rem !important;
+    font-size: 0.95rem !important;
+    background-color: #ffffff !important;
+}
+.stTextInput > div > div > input:focus, .stTextArea > div > div > textarea:focus {
+    border-color: #0071e3 !important;
+    box-shadow: 0 0 0 3px rgba(0, 113, 227, 0.15) !important;
+}
+
+/* Caixas de resposta e mensagens do chat */
+[data-testid="stChatMessage"] {
+    background-color: #ffffff !important;
+    border: 1px solid rgba(0,0,0,0.05) !important;
+    border-radius: 16px !important;
+    padding: 1.25rem !important;
+    margin-bottom: 1rem !important;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.025) !important;
+}
 </style>
+"""
+st.markdown(APPLE_DESIGN_CSS, unsafe_allow_html=True)
+
+
+# =========================================================
+# BARRA DE NAVEGAÇÃO SUPERIOR ESTILO APPLE
+# =========================================================
+st.markdown("""
+<div class="apple-navbar">
+    <div class="apple-nav-brand">LangChain RAG Architecture</div>
+    <div class="apple-nav-links">
+        <span>Procedimentos Operacionais</span>
+        <span>Cross-Encoder Rerank</span>
+        <span>Inferência Local</span>
+    </div>
+</div>
 """, unsafe_allow_html=True)
 
 
 # =========================================================
-# GESTÃO DE ESTADO DA SESSÃO
+# SEÇÃO HERO — APRESENTAÇÃO MINIMALISTA
 # =========================================================
+st.markdown("""
+<div class="apple-hero">
+    <div class="apple-pill-badge">Motor LangChain & Docling Integrados</div>
+    <h1 class="apple-title">Consulta Operacional.<br>Sintetizada com precisão.</h1>
+    <p class="apple-subtitle">Sistema de inteligência documental para análise de Procedimentos Operacionais Padrão com verificação cruzada de evidências.</p>
+</div>
+""", unsafe_allow_html=True)
+
+
+# =========================================================
+# BARRA LATERAL (SIDEBAR) — CONTROLE DE PARÂMETROS
+# =========================================================
+with st.sidebar:
+    st.markdown("<h3 style='font-weight:600; font-size:1.1rem; margin-bottom:1rem; color:#1d1d1f;'>Estado da Base Vetorial</h3>", unsafe_allow_html=True)
+    
+    # Exibe métricas da base vetorial LangChain/Chroma
+    stats = vector_store.get_collection_stats()
+    if stats["exists"] and stats["count"] > 0:
+        st.markdown(f"""
+        <div style="background:#ffffff; padding:1rem; border-radius:12px; border:1px solid rgba(0,0,0,0.06); margin-bottom:1.2rem;">
+            <div style="font-size:0.82rem; color:#6e6e73; text-transform:uppercase; letter-spacing:0.04em;">Documentos Indexados</div>
+            <div style="font-size:1.8rem; font-weight:700; color:#1d1d1f; margin-top:0.2rem;">{stats["count"]}</div>
+            <div style="font-size:0.8rem; color:#0071e3; margin-top:0.3rem;">Coleção LangChain ativa</div>
+        </div>
+        """, unsafe_allow_html=True)
+    else:
+        st.markdown("""
+        <div style="background:#ffffff; padding:1rem; border-radius:12px; border:1px solid rgba(0,0,0,0.06); margin-bottom:1.2rem;">
+            <div style="font-size:0.82rem; color:#6e6e73; text-transform:uppercase;">Estado do Banco</div>
+            <div style="font-size:1.1rem; font-weight:600; color:#86868b; margin-top:0.2rem;">Nenhum documento</div>
+            <div style="font-size:0.8rem; color:#6e6e73; margin-top:0.3rem;">Realize a carga na área principal</div>
+        </div>
+        """, unsafe_allow_html=True)
+
+    st.markdown("<hr style='border:none; border-top:1px solid rgba(0,0,0,0.08); margin:1.5rem 0;'>", unsafe_allow_html=True)
+    st.markdown("<h3 style='font-weight:600; font-size:1.1rem; margin-bottom:1rem; color:#1d1d1f;'>Parâmetros de Operação</h3>", unsafe_allow_html=True)
+    
+    top_k_retrieval = st.slider("Recuperação Inicial (Bi-Encoder)", min_value=3, max_value=20, value=settings.TOP_K_RETRIEVAL, help="Quantidade de fragmentos extraídos na primeira etapa via similaridade de cosseno.")
+    top_k_rerank = st.slider("Seleção Final (Cross-Encoder)", min_value=1, max_value=8, value=settings.TOP_K_RERANK, help="Quantidade de fragmentos refinados e injetados na cadeia de inferência.")
+    
+    st.markdown("<hr style='border:none; border-top:1px solid rgba(0,0,0,0.08); margin:1.5rem 0;'>", unsafe_allow_html=True)
+    st.markdown("<h3 style='font-weight:600; font-size:1.1rem; margin-bottom:1rem; color:#1d1d1f;'>Conexão de Inferência</h3>", unsafe_allow_html=True)
+    st.caption(f"Servidor: `{settings.LLM_BASE_URL}`")
+    st.caption(f"Modelo: `{settings.LLM_MODEL_NAME}`")
+    
+    if st.button("Limpar Base Vetorial LangChain", use_container_width=True):
+        vector_store.delete_collection()
+        st.success("Base vetorial removida com sucesso.")
+        st.rerun()
+
+
+# =========================================================
+# GESTÃO DE DOCUMENTOS E CARGA NA BASE
+# =========================================================
+st.markdown("<div style='margin-bottom:1.8rem;'></div>", unsafe_allow_html=True)
+
+col_doc1, col_doc2 = st.columns([1.3, 1], gap="large")
+
+with col_doc1:
+    st.markdown("""
+    <div class="apple-card">
+        <div class="apple-card-title">Carga e Indexação de Documentos</div>
+        <div class="apple-card-desc">Envie um novo arquivo PDF do Procedimento Operacional Padrão ou utilize o documento local residente no servidor. O motor Docling estruturará tabelas e parágrafos antes da conversão em objetos LangChain.</div>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    uploaded_file = st.file_uploader("Selecione o arquivo PDF para processamento", type=["pdf"], label_visibility="collapsed")
+    
+    col_btn1, col_btn2 = st.columns(2)
+    with col_btn1:
+        if uploaded_file is not None:
+            if st.button("Indexar Arquivo Selecionado", use_container_width=True):
+                with st.status("Processando documento e indexando via LangChain...", expanded=True) as status:
+                    st.write("Gravando temporariamente no disco...")
+                    with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp_file:
+                        tmp_file.write(uploaded_file.getvalue())
+                        tmp_path = tmp_file.name
+                        
+                    st.write("Executando conversão estruturada via Docling e fragmentação semântica...")
+                    count = document_processor.index_pdf(tmp_path, force_reindex=False)
+                    os.unlink(tmp_path)
+                    
+                    status.update(label=f"Indexação concluída com sucesso. Total de fragmentos: {count}", state="complete", expanded=False)
+                st.rerun()
+        else:
+            st.button("Indexar Arquivo Selecionado", disabled=True, use_container_width=True)
+            
+    with col_btn2:
+        default_pdf = settings.DEFAULT_PDF_PATH
+        if os.path.exists(default_pdf):
+            if st.button("Indexar Documento Local (pop_leitura.pdf)", use_container_width=True):
+                with st.status("Carregando e indexando documento padrão via LangChain...", expanded=True) as status:
+                    st.write("Analisando estrutura documental do PDF residente...")
+                    count = document_processor.index_pdf(default_pdf, force_reindex=False)
+                    status.update(label=f"Documento local indexado com sucesso. Fragmentos na coleção: {count}", state="complete", expanded=False)
+                st.rerun()
+
+with col_doc2:
+    st.markdown("""
+    <div class="apple-card" style="height: 100%;">
+        <div class="apple-card-title">Arquitetura LangChain LCEL</div>
+        <div class="apple-card-desc" style="margin-top:0.8rem;">
+            O fluxo de processamento opera de maneira encadeada:
+            <ul style="margin-top:0.6rem; padding-left:1.2rem; line-height:1.6; color:#515154;">
+                <li><b>Ingestão:</b> Conversão de layout Markdown via Docling para objetos <code>Document</code> oficiais do LangChain.</li>
+                <li><b>Armazenamento:</b> Vetorização local de alta densidade no ChromaDB via <code>HuggingFaceEmbeddings</code>.</li>
+                <li><b>Retriever Duplo:</b> Busca inicial por cosseno e reordenação de precisão via <code>CrossEncoder</code>.</li>
+                <li><b>Cadeia LCEL:</b> Formatação e geração limpa via <code>ChatPromptTemplate</code> conectado ao LM Studio.</li>
+            </ul>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+
+# =========================================================
+# INTERFACE DE CONSULTA E RESPOSTAS (CHAT APPLE STYLE)
+# =========================================================
+st.markdown("<hr style='border:none; border-top:1px solid rgba(0,0,0,0.08); margin:2.5rem 0;'>", unsafe_allow_html=True)
+
+st.markdown("""
+<div style="margin-bottom: 1.5rem;">
+    <h2 style="font-size:1.8rem; font-weight:700; letter-spacing:-0.025em; color:#1d1d1f; margin-bottom:0.3rem;">Consulta ao Procedimento Operacional</h2>
+    <p style="font-size:1rem; color:#6e6e73;">Digite sua dúvida técnica abaixo para receber uma síntese baseada estritamente no texto do documento.</p>
+</div>
+""", unsafe_allow_html=True)
+
+# Histórico de conversação na sessão do Streamlit
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
-if "stats" not in st.session_state:
-    st.session_state.stats = vector_store.get_collection_stats()
+# Exibe mensagens anteriores
+for msg in st.session_state.messages:
+    with st.chat_message(msg["role"]):
+        st.markdown(msg["content"])
+        if "sources" in msg and msg["sources"]:
+            with st.expander("Evidências Documentais Recuperadas"):
+                for src in msg["sources"]:
+                    st.markdown(f"**Página {src['page']} (Relevância Cross-Encoder: {src['score']:.4f})**\n\n{src['text']}\n\n---")
 
+# Entrada do usuário
+query = st.chat_input("Ex: Quais os requisitos de segurança para inspeção ou qual o procedimento para falhas?")
 
-def update_stats():
-    """Atualiza as estatísticas operacionais do banco vetorial no estado da sessão."""
-    st.session_state.stats = vector_store.get_collection_stats()
-
-
-# =========================================================
-# BARRA LATERAL (PAINEL DE CONTROLE)
-# =========================================================
-with st.sidebar:
-    st.markdown("### Painel de Sistema")
-    st.caption("Arquitetura RAG Bi-Encoder & Cross-Encoder")
-    st.divider()
-    
-    # --- STATUS DA BASE VETORIAL ---
-    st.markdown("#### Base de Conhecimento")
-    stats = st.session_state.stats
-    if stats["count"] > 0:
-        st.markdown(f"**Status:** Ativo (`{stats['collection_name']}`)")
-        st.metric(label="Fragmentos Indexados", value=stats["count"])
-    else:
-        st.markdown("**Status:** Base não indexada")
-        st.metric(label="Fragmentos Indexados", value=0)
-        
-    st.divider()
-    
-    # --- INGESTÃO DE DOCUMENTOS ---
-    st.markdown("#### Ingestão de Documentos")
-    
-    if os.path.exists(settings.DEFAULT_PDF_PATH):
-        if st.button("Indexar Documento Padrão", use_container_width=True):
-            with st.status("Processando documento...", expanded=True) as status:
-                st.write("Convertendo páginas estruturadas via Docling...")
-                st.write("Aplicando segmentação semântica...")
-                n = document_processor.index_pdf(settings.DEFAULT_PDF_PATH, force_reindex=False)
-                status.update(label="Indexação concluída com sucesso", state="complete", expanded=False)
-            update_stats()
-            st.rerun()
-    else:
-        st.caption(f"Documento padrão não localizado em: data/raw/{os.path.basename(settings.DEFAULT_PDF_PATH)}")
-        
-    uploaded_file = st.file_uploader("Upload de Documento PDF", type=["pdf"])
-    
-    col1, col2 = st.columns(2)
-    with col1:
-        btn_index_new = st.button("Processar", type="primary", use_container_width=True, disabled=(uploaded_file is None))
-    with col2:
-        btn_clear = st.button("Limpar Base", use_container_width=True)
-
-    if btn_index_new and uploaded_file:
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
-            tmp.write(uploaded_file.read())
-            tmp_path = tmp.name
-            
-        with st.status(f"Indexando {uploaded_file.name}...", expanded=True) as status:
-            st.write("Realizando análise estrutural do documento...")
-            st.write("Fragmentando parágrafos e gerando embeddings...")
-            n = document_processor.index_pdf(tmp_path, force_reindex=False)
-            status.update(label="Documento indexado e disponível", state="complete", expanded=False)
-            
-        try:
-            os.unlink(tmp_path)
-        except Exception:
-            pass
-            
-        update_stats()
-        st.rerun()
-        
-    if btn_clear:
-        with st.spinner("Limpando base vetorial..."):
-            if os.path.exists(settings.DEFAULT_PDF_PATH):
-                document_processor.index_pdf(settings.DEFAULT_PDF_PATH, force_reindex=True)
-            else:
-                vector_store.delete_collection()
-        update_stats()
-        st.rerun()
-
-    st.divider()
-    
-    # --- PARÂMETROS OPERACIONAIS ---
-    st.markdown("#### Parâmetros de Recuperação")
-    
-    use_reranker = st.toggle("Refinamento Cross-Encoder", value=True)
-    
-    top_k_retrieval = st.slider("Busca Semântica (Candidatos)", min_value=4, max_value=24, value=settings.TOP_K_RETRIEVAL, step=2)
-    
-    top_k_rerank = st.slider("Trechos Selecionados", min_value=1, max_value=8, value=settings.TOP_K_RERANK, step=1)
-    
-    temperature = st.slider("Precisão Técnica (Temperatura)", min_value=0.0, max_value=0.7, value=settings.LLM_TEMPERATURE, step=0.05)
-
-    st.divider()
-    st.caption(f"Modelo LLM: {settings.LLM_MODEL_NAME}\n\nServidor: {settings.LLM_BASE_URL}")
-
-
-# =========================================================
-# ÁREA PRINCIPAL - INTERFACE DE CONSULTA
-# =========================================================
-st.markdown("<h1>Assistente de Procedimentos e Consultas</h1>", unsafe_allow_html=True)
-st.markdown("<p style='opacity: 0.75; font-size: 1.05rem; margin-bottom: 2rem;'>Respostas técnicas estruturadas com base em documentação oficial, citações exatas e verificação de fontes.</p>", unsafe_allow_html=True)
-
-if st.session_state.messages:
-    col_spacer, col_clear = st.columns([8, 2])
-    with col_clear:
-        if st.button("Nova Consulta", use_container_width=True):
-            st.session_state.messages = []
-            st.rerun()
-
-for message in st.session_state.messages:
-    with st.chat_message(message["role"]):
-        st.markdown(message["content"])
-        
-        if message["role"] == "assistant" and message.get("context_chunks"):
-            with st.expander(f"Fontes e Trechos Verificados ({len(message['context_chunks'])})"):
-                for idx, chunk in enumerate(message["context_chunks"], 1):
-                    page = chunk.get("page_num", "N/A")
-                    score = chunk.get("rerank_score", chunk.get("vector_distance", "N/A"))
-                    st.markdown(f"""
-                    <div class="context-card">
-                        <div class="context-header">Trecho {idx} — Página {page} | Índice de Relevância: {score}</div>
-                        <div>{chunk['text']}</div>
-                    </div>
-                    """, unsafe_allow_html=True)
-
-if user_query := st.chat_input("Faça uma pergunta técnica sobre o procedimento ou documento..."):
-    if st.session_state.stats["count"] == 0:
-        st.error("A base de conhecimento não possui documentos indexados. Utilize o painel lateral para indexar o arquivo padrão ou enviar um PDF.")
-        st.stop()
-
-    st.session_state.messages.append({"role": "user", "content": user_query})
+if query:
+    st.session_state.messages.append({"role": "user", "content": query})
     with st.chat_message("user"):
-        st.markdown(user_query)
-
+        st.markdown(query)
+        
     with st.chat_message("assistant"):
-        with st.status("Consultando documentação e formulando resposta técnica...", expanded=True) as status:
-            status.write("Executando busca semântica vetorial (Bi-Encoder)...")
-            chunks = retriever.retrieve(
-                query=user_query,
-                n_retrieval=top_k_retrieval,
-                n_rerank=top_k_rerank,
-                use_reranker=use_reranker
-            )
+        with st.spinner("Analisando evidências na base vetorial e gerando síntese técnica..."):
+            retrieved = retriever.retrieve(query, top_k_retrieval=top_k_retrieval, top_k_rerank=top_k_rerank)
             
-            if use_reranker and len(chunks) > 1:
-                status.write("Aplicando refinamento e reordenação com Cross-Encoder...")
-            
-            status.write("Processando contexto com modelo local...")
-            answer = generator.ask(
-                question=user_query,
-                chunks=chunks,
-                temperature=temperature
-            )
-            status.update(label="Consulta finalizada", state="complete", expanded=False)
-        
-        st.markdown(answer)
-        
-        if chunks:
-            with st.expander(f"Fontes e Trechos Verificados ({len(chunks)})"):
-                for idx, chunk in enumerate(chunks, 1):
-                    page = chunk.get("page_num", "N/A")
-                    score = chunk.get("rerank_score", chunk.get("vector_distance", "N/A"))
-                    st.markdown(f"""
-                    <div class="context-card">
-                        <div class="context-header">Trecho {idx} — Página {page} | Índice de Relevância: {score}</div>
-                        <div>{chunk['text']}</div>
-                    </div>
-                    """, unsafe_allow_html=True)
-                    
+            if not retrieved:
+                answer = "Com base no procedimento operacional indexado no momento, não foram encontrados trechos com similaridade suficiente para responder a esta consulta com precisão."
+                sources_meta = []
+            else:
+                answer = generator.generate_answer(query, retrieved)
+                sources_meta = [
+                    {
+                        "page": c.get("page_num", "?"),
+                        "score": c.get("rerank_score", c.get("similarity", 0.0)),
+                        "text": c.get("text", "")
+                    }
+                    for c in retrieved
+                ]
+                
+            st.markdown(answer)
+            if sources_meta:
+                with st.expander("Evidências Documentais Recuperadas"):
+                    for src in sources_meta:
+                        st.markdown(f"**Página {src['page']} (Relevância Cross-Encoder: {src['score']:.4f})**\n\n{src['text']}\n\n---")
+                        
     st.session_state.messages.append({
         "role": "assistant",
         "content": answer,
-        "context_chunks": chunks
+        "sources": sources_meta
     })

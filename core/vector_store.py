@@ -1,42 +1,60 @@
-import chromadb
-from sentence_transformers import SentenceTransformer
+import shutil
+from langchain_huggingface import HuggingFaceEmbeddings
+from langchain_chroma import Chroma
 from config import settings
 
-client = chromadb.PersistentClient(path=settings.DB_PATH)
-_embedding_model_cache = None
+_embeddings_cache = None
+_vector_db_cache = None
 
 
-def get_embedding_model():
-    """Retorna a instância do modelo Bi-Encoder carregada em cache na memória."""
-    global _embedding_model_cache
-    if _embedding_model_cache is None:
-        print(f"[VectorStore] Carregando modelo Bi-Encoder: {settings.EMBEDDING_MODEL}...")
-        _embedding_model_cache = SentenceTransformer(settings.EMBEDDING_MODEL)
-    return _embedding_model_cache
+def get_embeddings():
+    """Retorna a instância em cache do modelo de embeddings HuggingFace (Bi-Encoder)."""
+    global _embeddings_cache
+    if _embeddings_cache is None:
+        print(f"[LangChain VectorStore] Carregando modelo de embeddings: {settings.EMBEDDING_MODEL}")
+        _embeddings_cache = HuggingFaceEmbeddings(
+            model_name=settings.EMBEDDING_MODEL,
+            encode_kwargs={"normalize_embeddings": True}
+        )
+    return _embeddings_cache
 
 
-def get_collection():
-    """Retorna ou cria a coleção principal no ChromaDB com métrica de similaridade cosseno."""
-    return client.get_or_create_collection(
-        name=settings.COLLECTION_NAME,
-        metadata={"hnsw:space": "cosine"}
-    )
+def get_vector_db():
+    """Retorna ou inicializa o banco vetorial Chroma via integração nativa do LangChain."""
+    global _vector_db_cache
+    if _vector_db_cache is None:
+        embeddings = get_embeddings()
+        _vector_db_cache = Chroma(
+            collection_name=settings.COLLECTION_NAME,
+            embedding_function=embeddings,
+            persist_directory=settings.DB_PATH,
+            collection_metadata={"hnsw:space": "cosine"}
+        )
+    return _vector_db_cache
 
 
 def delete_collection():
-    """Remove a coleção do ChromaDB em caso de reindexação forçada."""
+    """Limpa a base vetorial reinstanciando o repositório no ChromaDB via LangChain."""
+    global _vector_db_cache
     try:
-        client.delete_collection(settings.COLLECTION_NAME)
-        print(f"[VectorStore] Coleção '{settings.COLLECTION_NAME}' removida com sucesso.")
-    except Exception:
-        pass
+        if _vector_db_cache is not None:
+            _vector_db_cache.delete_collection()
+            _vector_db_cache = None
+        else:
+            db = get_vector_db()
+            db.delete_collection()
+            _vector_db_cache = None
+        print(f"[LangChain VectorStore] Coleção '{settings.COLLECTION_NAME}' removida com sucesso.")
+    except Exception as e:
+        print(f"[LangChain VectorStore] Aviso ao remover coleção: {e}")
 
 
 def get_collection_stats() -> dict:
-    """Retorna estatísticas operacionais da coleção."""
+    """Retorna estatísticas operacionais da base vetorial do LangChain."""
     try:
-        coll = client.get_collection(settings.COLLECTION_NAME)
-        count = coll.count()
+        db = get_vector_db()
+        # O cliente nativo interno do Chroma no LangChain
+        count = db._collection.count()
         return {
             "exists": True,
             "count": count,

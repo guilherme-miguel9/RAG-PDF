@@ -1,72 +1,67 @@
-from openai import OpenAI
+from langchain_openai import ChatOpenAI
+from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.output_parsers import StrOutputParser
 from config import settings
 
-client = OpenAI(
+# Inicializa o modelo de chat do LangChain apontando para o servidor local LM Studio
+llm = ChatOpenAI(
     base_url=settings.LLM_BASE_URL,
-    api_key=settings.LLM_API_KEY
+    api_key=settings.LLM_API_KEY,
+    model=settings.LLM_MODEL_NAME,
+    temperature=settings.LLM_TEMPERATURE
 )
+
+SYSTEM_PROMPT = """Você é o Assistente Especialista em Procedimentos Operacionais Padrão (POP), operando com motor LangChain RAG.
+Sua missão é fornecer respostas técnicas, exatas, profissionais e rigorosamente embasadas nos trechos do documento fornecidos.
+
+Regras Inegociáveis de Atuação:
+1. Baseie sua resposta EXCLUSIVAMENTE nas informações contidas nos trechos de contexto abaixo.
+2. Nunca invente, presuma ou extrapole procedimentos não descritos no texto ("alucinação zero").
+3. Cite sempre o número da página correspondente ao fato ou procedimento mencionado (ex: [Página 4]).
+4. Se a informação solicitada não estiver presente no contexto fornecido, responda com clareza profissional:
+   "Com base no procedimento operacional indexado no momento, não há menção específica sobre este ponto."
+5. Mantenha um tom sóbrio, analítico, estruturado e altamente claro. Utilize listas numeradas ou tópicos se facilitar a leitura técnica."""
 
 
 def format_context(chunks: list[dict]) -> str:
-    """Formata os trechos recuperados para inclusão no prompt do LLM indicando páginas."""
+    """Formata os trechos recuperados para injeção no prompt do LangChain, com referências claras."""
     if not chunks:
-        return "Nenhum trecho de contexto relevante foi recuperado."
+        return "Nenhum trecho relevante identificado para esta consulta."
         
-    parts = []
-    for c in chunks:
-        page = c.get("page_num", "N/A")
-        score = c.get("rerank_score", c.get("vector_distance", "N/A"))
-        text = c.get("text", "")
+    formatted_parts = []
+    for i, c in enumerate(chunks, 1):
+        text = c.get("text", "").strip()
+        page = c.get("page_num", "?")
+        score = c.get("rerank_score", c.get("similarity", 0.0))
+        formatted_parts.append(f"--- TRECHO {i} [Página {page} | Relevância: {score:.4f}] ---\n{text}")
         
-        parts.append(f"[Página {page} | Relevância: {score}]\n{text}")
-        
-    return "\n\n---\n\n".join(parts)
+    return "\n\n".join(formatted_parts)
 
 
-def ask(
-    question: str,
-    chunks: list[dict],
-    temperature: float = settings.LLM_TEMPERATURE,
-    max_tokens: int = settings.LLM_MAX_TOKENS
-) -> str:
+def generate_answer(query: str, retrieved_chunks: list[dict], custom_system_prompt: str = None) -> str:
     """
-    Envia o prompt com o contexto recuperado e a pergunta para o LLM local.
-    Retorna a resposta com fidelidade estrita às fontes.
+    Gera a resposta técnica utilizando a arquitetura LangChain LCEL (Prompt -> LLM -> OutputParser).
     """
-    if not chunks:
-        return (
-            "Não encontrei informações suficientes no documento indexado para responder "
-            "com precisão a essa pergunta."
-        )
-
-    context_str = format_context(chunks)
+    context_text = format_context(retrieved_chunks)
+    active_system_prompt = custom_system_prompt if custom_system_prompt else SYSTEM_PROMPT
     
-    user_message = f"""CONTEXTO RECUPERADO DO DOCUMENTO:
-{context_str}
-
-===
-PERGUNTA DO USUÁRIO:
-{question}
-
-RESPONDA UTILIZANDO APENAS O CONTEXTO ACIMA. LEMBRE-SE DE CITAR A PÁGINA AO FINAL DAS INFORMAÇÕES."""
-
+    # Criação do template LangChain
+    prompt_template = ChatPromptTemplate.from_messages([
+        ("system", active_system_prompt),
+        ("user", "Contexto Documental Oficial:\n{context}\n\nPergunte do Operador/Usuário:\n{query}")
+    ])
+    
+    # Cadeia LCEL (LangChain Expression Language)
+    rag_chain = prompt_template | llm | StrOutputParser()
+    
+    print(f"[LangChain Generator] Acionando cadeia LCEL para o modelo '{settings.LLM_MODEL_NAME}' em {settings.LLM_BASE_URL}...")
     try:
-        response = client.chat.completions.create(
-            model=settings.LLM_MODEL_NAME,
-            messages=[
-                {"role": "system", "content": settings.SYSTEM_PROMPT},
-                {"role": "user", "content": user_message}
-            ],
-            temperature=temperature,
-            max_tokens=max_tokens
-        )
-        return response.choices[0].message.content.strip()
-        
+        response = rag_chain.invoke({
+            "context": context_text,
+            "query": query
+        })
+        return response.strip()
     except Exception as e:
-        error_msg = str(e)
-        if "Connection refused" in error_msg or "127.0.0.1:1234" in error_msg:
-            return (
-                "[Erro de Conexão com o LM Studio] Não foi possível conectar ao servidor local http://127.0.0.1:1234/v1.\n\n"
-                "Por favor, verifique se o LM Studio está aberto, se o servidor local (Local Server) foi iniciado na porta 1234 e se um modelo está carregado."
-            )
-        return f"[Erro ao gerar resposta com o LLM] {error_msg}"
+        error_msg = f"[Erro na Cadeia LangChain]: Falha ao comunicar com o servidor LM Studio em '{settings.LLM_BASE_URL}'.\nDetalhes do Erro: {str(e)}"
+        print(error_msg)
+        return "Não foi possível obter resposta do servidor de inferência local (LM Studio). Verifique se o servidor local está em execução e acessível."
